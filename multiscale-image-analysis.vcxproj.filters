@@ -1,0 +1,214 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files">
+      <UniqueIdentifier>{4FC737F1-C7A5-4376-A066-2A32D752A2FF}</UniqueIdentifier>
+      <Extensions>cpp;c;cc;cxx;c++;cppm;ixx;def;odl;idl;hpj;bat;asm;asmx</Extensions>
+    </Filter>
+    <Filter Include="Header Files">
+      <UniqueIdentifier>{93995380-89BD-4b04-88EB-625FBE52EBFB}</UniqueIdentifier>
+      <Extensions>h;hh;hpp;hxx;h++;hm;inl;inc;ipp;xsd</Extensions>
+    </Filter>
+    <Filter Include="Resource Files">
+      <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
+      <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
+    </Filter>
+    <Filter Include="Header Files\utility">
+      <UniqueIdentifier>{981abde9-04bb-47bf-9f52-d0700d7f512f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\utility">
+      <UniqueIdentifier>{6c5fba79-1bcc-4b5a-ac66-47bc9e7af603}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\database">
+      <UniqueIdentifier>{04be77d7-6d8c-4eb9-98c9-e19bc65d0b70}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\application">
+      <UniqueIdentifier>{bce9f9b3-0677-4e28-b26c-3fc73f78c785}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\application">
+      <UniqueIdentifier>{9c34effb-09a7-44a2-bdad-e5b9321bb74a}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\database">
+      <UniqueIdentifier>{cf7cef8b-2fa5-4471-b1fa-fd363e1f6571}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\application\viewer">
+      <UniqueIdentifier>{ef089957-07b3-4bb9-829f-094bb7c30048}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Header Files\application\widgets">
+      <UniqueIdentifier>{b0318e2f-d756-4a5c-a509-52a8af0b81d2}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\application\widgets">
+      <UniqueIdentifier>{367b3e07-7e98-4282-8ed8-c85cc804247c}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Source Files\application\viewer">
+      <UniqueIdentifier>{a108cedc-db29-4add-b5d8-c29054730934}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="source\main.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="source\utility.cpp">
+      <Filter>Source Files\utility</Filter>
+    </ClCompile>
+    <ClCompile Include="source\feature.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\workspace.cpp">
+      <Filter>Source Files\application</Filter>
+    </ClCompile>
+    <ClCompile Include="source\logger.cpp">
+      <Filter>Source Files\utility</Filter>
+    </ClCompile>
+    <ClCompile Include="source\python.cpp">
+      <Filter>Source Files\utility</Filter>
+    </ClCompile>
+    <ClCompile Include="source\segmentation.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\colormap.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\database.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\dataset.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\dataset_importer.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\feature_selector.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\number_input.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\plotting_widget.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\colormap_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+    <ClCompile Include="source\image_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+    <ClCompile Include="source\spectrum_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+    <ClCompile Include="source\embedding_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+    <ClCompile Include="source\embedding_creator.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\segment_selector.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\histogram_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+    <ClCompile Include="source\segmentation_manager.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\histogram.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\boxplot.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\boxplot_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="source\logger.hpp">
+      <Filter>Header Files\utility</Filter>
+    </ClInclude>
+    <ClInclude Include="source\configuration.hpp">
+      <Filter>Header Files\utility</Filter>
+    </ClInclude>
+    <ClInclude Include="source\python.hpp">
+      <Filter>Header Files\utility</Filter>
+    </ClInclude>
+    <ClInclude Include="source\tensor.hpp">
+      <Filter>Header Files\utility</Filter>
+    </ClInclude>
+    <ClInclude Include="source\dataset_importer.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="source\feature.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\workspace.hpp">
+      <Filter>Header Files\application</Filter>
+    </QtMoc>
+    <QtMoc Include="source\segmentation.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\colormap.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\database.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\collection.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\dataset.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\colormap_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\image_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\spectrum_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\plotting_widget.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\number_input.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\feature_selector.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\embedding_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\embedding_creator.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\segment_selector.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\histogram_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\utility.hpp">
+      <Filter>Header Files\utility</Filter>
+    </QtMoc>
+    <QtMoc Include="source\segmentation_manager.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\histogram.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\boxplot_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
+    </QtMoc>
+    <QtMoc Include="source\boxplot.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+  </ItemGroup>
+  <ItemGroup>
+    <QtRcc Include="resources\resources.qrc">
+      <Filter>Resource Files</Filter>
+    </QtRcc>
+  </ItemGroup>
+</Project>

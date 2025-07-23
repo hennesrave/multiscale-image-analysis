@@ -1,0 +1,169 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|x64">
+      <Configuration>Debug</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|x64">
+      <Configuration>Release</Configuration>
+      <Platform>x64</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{b67da172-b2f8-4c71-ab25-48f823441579}</ProjectGuid>
+    <RootNamespace>multiscaleimageanalysis</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+    <Keyword>QtVS_v304</Keyword>
+    <QtMsBuild Condition="'$(QtMsBuild)'=='' OR !Exists('$(QtMsBuild)\qt.targets')">$(MSBuildProjectDirectory)\QtMsBuild</QtMsBuild>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
+    <ConfigurationType>Application</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v143</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <Import Project="$(QtMsBuild)\qt_defaults.props" Condition="Exists('$(QtMsBuild)\qt_defaults.props')" />
+  <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <QtModules>core;widgets;openglwidgets</QtModules>
+  </PropertyGroup>
+  <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <QtModules>core;widgets;openglwidgets</QtModules>
+  </PropertyGroup>
+  <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') OR !Exists('$(QtMsBuild)\Qt.props')">
+    <Message Importance="High" Text="QtMsBuild: could not locate qt.targets, qt.props; project may not build correctly." />
+  </Target>
+  <ImportGroup Label="ExtensionSettings">
+  </ImportGroup>
+  <ImportGroup Label="Shared">
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(QtMsBuild)\Qt.props" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+    <Import Project="$(QtMsBuild)\Qt.props" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <OutDir>$(SolutionDir)build\</OutDir>
+    <IntDir>$(SolutionDir)intermediate\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)_debug</TargetName>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <OutDir>$(SolutionDir)build\</OutDir>
+    <IntDir>$(SolutionDir)intermediate\$(Configuration)\</IntDir>
+    <TargetName>$(ProjectName)</TargetName>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(ProjectDir)external\;$(ProjectDir)external\Python313\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(ProjectDir)external\Python313\libs\python313.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <MultiProcessorCompilation>true</MultiProcessorCompilation>
+      <AdditionalIncludeDirectories>$(ProjectDir)external\;$(ProjectDir)external\Python313\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Console</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>$(ProjectDir)external\Python313\libs\python313.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="source\boxplot.cpp" />
+    <ClCompile Include="source\boxplot_viewer.cpp" />
+    <ClCompile Include="source\colormap.cpp" />
+    <ClCompile Include="source\colormap_viewer.cpp" />
+    <ClCompile Include="source\database.cpp" />
+    <ClCompile Include="source\dataset.cpp" />
+    <ClCompile Include="source\dataset_importer.cpp" />
+    <ClCompile Include="source\embedding_creator.cpp" />
+    <ClCompile Include="source\embedding_viewer.cpp" />
+    <ClCompile Include="source\feature.cpp" />
+    <ClCompile Include="source\feature_selector.cpp" />
+    <ClCompile Include="source\histogram.cpp" />
+    <ClCompile Include="source\histogram_viewer.cpp" />
+    <ClCompile Include="source\image_viewer.cpp" />
+    <ClCompile Include="source\logger.cpp" />
+    <ClCompile Include="source\main.cpp" />
+    <ClCompile Include="source\number_input.cpp" />
+    <ClCompile Include="source\plotting_widget.cpp" />
+    <ClCompile Include="source\python.cpp" />
+    <ClCompile Include="source\segmentation_manager.cpp" />
+    <ClCompile Include="source\segment_selector.cpp" />
+    <ClCompile Include="source\segmentation.cpp" />
+    <ClCompile Include="source\spectrum_viewer.cpp" />
+    <ClCompile Include="source\utility.cpp" />
+    <ClCompile Include="source\workspace.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="source\feature.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtMoc Include="source\collection.hpp" />
+    <QtMoc Include="source\image_viewer.hpp" />
+    <QtMoc Include="source\colormap_viewer.hpp" />
+    <QtMoc Include="source\colormap.hpp" />
+    <QtMoc Include="source\database.hpp" />
+    <QtMoc Include="source\number_input.hpp" />
+    <QtMoc Include="source\dataset.hpp" />
+    <QtMoc Include="source\feature_selector.hpp" />
+    <QtMoc Include="source\embedding_viewer.hpp" />
+    <QtMoc Include="source\embedding_creator.hpp" />
+    <QtMoc Include="source\segment_selector.hpp" />
+    <QtMoc Include="source\histogram_viewer.hpp" />
+    <QtMoc Include="source\workspace.hpp" />
+    <QtMoc Include="source\boxplot_viewer.hpp" />
+    <QtMoc Include="source\boxplot.hpp" />
+    <ClInclude Include="source\configuration.hpp" />
+    <ClInclude Include="source\dataset_importer.hpp" />
+    <QtMoc Include="source\histogram.hpp" />
+    <ClInclude Include="source\logger.hpp" />
+    <QtMoc Include="source\plotting_widget.hpp" />
+    <ClInclude Include="source\python.hpp" />
+    <QtMoc Include="source\segmentation.hpp" />
+    <QtMoc Include="source\spectrum_viewer.hpp" />
+    <QtMoc Include="source\segmentation_manager.hpp" />
+    <ClInclude Include="source\tensor.hpp" />
+    <QtMoc Include="source\utility.hpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <QtRcc Include="resources\resources.qrc" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <Import Project="$(QtMsBuild)\qt.targets" Condition="Exists('$(QtMsBuild)\qt.targets')" />
+  <ImportGroup Label="ExtensionTargets">
+  </ImportGroup>
+</Project>

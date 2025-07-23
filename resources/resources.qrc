@@ -1,0 +1,11 @@
+<RCC>
+    <qresource prefix="/">
+        <file>multiscale-image-analysis-icon.svg</file>
+        <file>reset.svg</file>
+        <file>save.svg</file>
+        <file>edit.svg</file>
+        <file>invert.svg</file>
+        <file>delete.svg</file>
+        <file>add.svg</file>
+    </qresource>
+</RCC>

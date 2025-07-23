@@ -1,0 +1,357 @@
+<FlowDocument xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation" FontFamily="Segoe UI" FontSize="12">
+  <FlowDocument.Tag><![CDATA[{
+  "timestamp": "2025-07-11 13:33:46",
+  "files": {
+    "C:\\documents\\projects\\multiscale-image-analysis\\multiscale-image-analysis.vcxproj": {
+      "before": "7Vhbb9s2FO7zgAH7CYKQIvZDrNhxm2yVVax2ZgR1LqhzeQkQ0NKxzVUiBZJKk7X7y/sNO5QoyrKdtF6TPQzLQxCR5xye8/E7F+avn1688N/eJbFzC0JSznpuu7XrOsBCHlE267mZmu4cuG+DH3/wzwT/HULlDGBKslidEzEDJXvuu4zGkeugFYZfc6XSXzxPhnNIiGwlNBRc8qlqhTzxIriFmKcgvEROtJrX2d3dc9G64/hHCpKh4FnqjMgE4p5rDuxzNqWzTBCFDspCGMXX7TpHLIyzCHruACbZ7Mvd624pjxo1Q0Eu4Xv1Re2I/vHPYqKmXCQBmvA9+1Xs40KBxTrlrzj2AWIgEh51zcg8uXO+ZzEuIMcw8DLUfQ32YcwnJK6AvuybaC8LjgTt/dau760sG2zew/0nLqLgirK9jtb0vXLJSBhzw4xGwefJ6/2ItPc7O5PO9GCnG+63d8ik82qnezA96Ox1u+1X+z//aQHPdYyZD5yrE5KATEkIQYKUpDIkMdCEzIAwEt9LKn2vLmZ00bmIf5IFh8vbtfHt6vgeFdFmcqcq+AyJk5QL5ZgQe+5W47JvMuWMqHnz+tgmRD9NWyaXWilehHQdb921IMkiqrnfc7e3GjXKNb9sNUrvm9u93ral/bZbZlFNocyGei6c36cQ/JqmMQ3zJFsiXr5tgLuQkJ8xohNBBAUZKJGB762uG4XSvXPOYwkquG1396qEKleNcH9OBAkViDFKXjCKVQht11YfRB4hry7D2QS0hZT892CbYoo9GW5Xcx4DAjATJDlNFU3oH/lFmst5cPsJYD/ajPB1ohfKtepzeKeA6VaEFFDYgkwdwtKVH5TLLqZaTXmM/IHI9JNv0ihZM54DNjN3I94sJFvuEZaEVTQwMYQuQQMqlpN/IXdbGYqVVWCBu3BHpZINzPuN7Ww3bQkYcayLmN8DokiZj7bYPDtMtfT6TwFVkqfGQX1Rx0RPPRbiutzC9W5Sz0vkTjPNpWCrMeZxptuCZlY+TPme2TNpfcTWSFKG5TWBiBIF1wsMxL9rnaJ5jSlXGDDmijamOy4ejiHpYVB/NW8iPWz53oLAc1fpr4OB7m+Oxj9F4Nti18MXNnzK8m5ekOY7ydCP+zxJaQwGECxBV0QwrJsjPWoH+W/st7XF4j5RdDwY9ecQfjRtwn5agTMBqeAhSMlF5bkMbgaH7y6Gb276pyfj09Hhm5fIh7WSTT0krd2pHNag46RNWAjH2O+NM8ur1qcRYbMMJ7yxIiwiOGhKFYVp2sGRbWWrUMIJYgkmf0TZx8qDcTYZ30u8nQBPldhKfa9asgcPgQE+Qor556jwWeefcfjB7dIJe2Yxhld4Lva076TI2lq7HP1mJPktY6EOM6eSjgHJZUJeu2XxwuohKLbysBQrZ8U1G1bJcrAYK+2nFXiITif/U/L5KFkxFLlj6VS9tiXPRAjXCaGshbloG9/ye3N1PHr0daSKfzFYcwsjYPm6seOieWStn/3s+zH4Gw==",
+      "after": "7VhZb+M2EN7nAn3suyqkSAw0VuxkN+lG1qJxsmlQO5dzvBgIaIm2uSuJKkll43b73zs8RFk+crco0O5D1iKHozm+b2aole/evPE/3CWxc4sZJzRtuY36huvgNKQRSUctNxfD9R33Q/DtN/4po59wKJx9PER5LC4QG2HBW+5eTuLIdUBLCk9jIbL3nsfDMU4QryckZJTToaiHNPEifItjmmHmJXwgj3nNjY1NF7Q7jn8kcHLIaJ45HTTAccs1L2zTdEhGOUMCDORaGMQX7TpHaRjnEW65+3iQj77evdsq5OFERVGgJHyvuigNkf/80xiJIWVJACp8zz7pfVjQsVh0+AHDznGMEcf3mmZkXt0437Mx1iEHNyAZYlIJ+2FMByguA33VNt5eaYwEje36hu/NLZvY/IonXyiLgmuSbjblSd8rloyEUXeYkyj4Y/BuO0KN7eb6oDncWd8KtxvraNB8u761M9xpbm5tNd5u//SnDbg6Y9ScUyqOUYJ5hkIcJABJwkMUY5KgEUYpiieccN+ripmzYFxEv3CN4SK71r8N6d+9IjO+nomr3s3t5gZAZcbXM9HliiAOYCUiEsItd3Vlza7XVlut1VXn5Nz5/uCOcMHXKrv930RdaKat1txgZa3bU+pMDPcJA0pSNqn1rUbfsz91liVayzQbsiUZZcIxalruytpV2zD6FIlxrd+1xG1nWd1wvp6BJu463iL4VB2sUKP2dWWtiLJy2NJz1S3YXjlQsLbK2YtJhoOfsywmoSoGMwRR2yYzlxyrd3TIgCFGMA8Ey7Hvza+bA4V5F5TGHIvgtrG1WRK/WDXC7TFiKBSY9UDyMiVQLUF3ZVVKKtjORr6SjBlUVGIwF7Sp0vHPhW0IpeDV4nY9pjGGAIwYSk4yQRLyu0qkSc7S7VcI+9HTAF8F+vxhS7EaMPQm0i2RF/yYosISUs8cAW4vJpVphWcCkCagIwP5ppRDqbgfMtM8W0jaF+qvQtK8QdcRR9bmlmsDdUzFR5qnMCnsYeis2FSbltvOuaCJqmq77bhNk4zEuOLmw5Vxef08EzopsnoaGHUx59AiHJ1VlIZg5i9kNHadC3wnpkx+74Q0jyMnpcKJKdQc7JTl+Ef5W8Fk14H/1GiUoIkSVrMNHGayOseTuk2up72ersGV3ntwJ3AqBzGb7gCatoKuklt6sAcVCUfuI6WBgqos9cYYRrhKrJ8CqSKg8/SAMstk44X+NNtKpjpBPQexBZzBthE+WY8kksF0BzIWQ7fYRwIV1b1IBNTmeaMtVGUzLcwymH5UEl4S1gqT/tOBLaJYIYYEQhfJu0SRQjlnl731uVWxiPRJLrEK81WPxrmc0iRyFY19z+yZ6nGULpAkKQwDCY4I1Ij+FMLhd7VA94HOWoFRpwuCrJXwcnBJ1hH5VIMOAVcY31QMJSCP/J0zxcPBAPOfHo3nRuBxvssrDYynJFXDtQbNM1tk4b/tQmYBon6NWArttyMvsIH6C9NhZVHnE0R7+532GIefzVBjH63AKcMZoyF0IcpKy3lws3+wd3m4e9M+Oe6ddA52fwA8LJSsSRAs3CkNlkGH+6vsbl2YTo0xs6vWpg5KRzk0xZ5AaYTg+sZFFGZZEy5Cc1v2UFfeuQCz2hXduafnueX7WgWMzEW/L0LfIenn0olePuhNOCQ4AMM5zI6+Vy5ZMw5xiuHrgB74j7TbksLG56XbhRH2nfp+XKZkuuW+EGULy/us90/D2cc8DaWbCo3SB8CncXnhlo0XFCBGYMoIC7HicrRgwx6yMNb3KPtoBZYh8vh/VPsWYerbUgnhfwOqS5AD/Cwiyy9pnOYsxP0EkbQOFcG239lvSfPz1L1fFIT+qGHVzR+fGsfKqbsyqy65W019MCkuVVp7ZaKwo7a5iMzPzqrVyn4c/AU="
+    }
+  }
+}]]></FlowDocument.Tag>
+  <Section Margin="0,24" TextAlignment="Center">
+    <Paragraph FontSize="24" FontWeight="Bold" Margin="12,0">
+      <LineBreak />
+      <Span Foreground="Gray">Qt Visual Studio Tools</Span>
+    </Paragraph>
+    <Paragraph FontSize="42" Margin="12,0" FontWeight="Bold">
+      <Span TextDecorations="Underline">Project Format Conversion</Span>
+    </Paragraph>
+    <Paragraph Margin="12,8" FontSize="18">
+      <Span>Report generated on 2025-07-11 13:33:46</Span>
+    </Paragraph>
+  </Section>
+  <Section>
+    <Paragraph FontSize="32" FontWeight="Bold" Margin="12,0">
+      <Span>Files</Span>
+    </Paragraph>
+    <Paragraph Margin="24,12,0,0">
+      <Span FontFamily="Consolas" FontSize="14" Background="WhiteSmoke"><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+      <LineBreak />
+      <Hyperlink NavigateUri="file://C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj?before">[Before]</Hyperlink>
+      <Hyperlink NavigateUri="file://C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj?after">[After]</Hyperlink>
+      <Hyperlink NavigateUri="file://C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj?diff&amp;before&amp;after">
+                        [Diff before/after]
+                    </Hyperlink>
+      <Hyperlink NavigateUri="file://C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj?diff&amp;before&amp;current">
+                        [Diff before/current]
+                    </Hyperlink>
+      <Hyperlink NavigateUri="file://C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj?diff&amp;after&amp;current">
+                        [Diff after/current]
+                    </Hyperlink>
+      <LineBreak />
+    </Paragraph>
+  </Section>
+  <Section>
+    <Paragraph FontSize="32" FontWeight="Bold" Margin="12,0">
+      <Span>Changes</Span>
+    </Paragraph>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Enabling multi-processor compilation]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[      <MultiProcessorCompilation>true</MultiProcessorCompilation>]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[      <MultiProcessorCompilation>true</MultiProcessorCompilation>]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Project format version]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[    <Keyword>QtVS_v304</Keyword>]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Fallback for QTMSBUILD environment variable]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[    <QtMsBuild Condition="'$(QtMsBuild)'=='' OR !Exists('$(QtMsBuild)\qt.targets')">$(MSBuildProjectDirectory)\QtMsBuild</QtMsBuild>]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Default Qt properties]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  <Import Project="$(QtMsBuild)\qt_defaults.props" Condition="Exists('$(QtMsBuild)\qt_defaults.props')" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Qt build settings]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  <PropertyGroup Label="QtSettings" Condition="'$(Configuration)|$(Platform)'=='Release|x64'" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Warn if Qt/MSBuild is not found]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  <Target Name="QtMsBuildNotFound" BeforeTargets="CustomBuild;ClCompile" Condition="!Exists('$(QtMsBuild)\qt.targets') OR !Exists('$(QtMsBuild)\Qt.props')">]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[    <Message Importance="High" Text="QtMsBuild: could not locate qt.targets, qt.props; project may not build correctly." />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  </Target>]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Qt property sheet]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[    <Import Project="$(QtMsBuild)\Qt.props" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[    <Import Project="$(QtMsBuild)\Qt.props" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+    <Paragraph FontSize="20" FontWeight="Bold" Margin="12">
+      <Span><![CDATA[🡺 Qt targets]]></Span>
+    </Paragraph>
+    <Table CellSpacing="0" BorderBrush="Gray" BorderThickness="0.5">
+      <Table.Columns>
+        <TableColumn />
+        <TableColumn />
+      </Table.Columns>
+      <TableRowGroup>
+        <TableRow Background="Orange">
+          <TableCell ColumnSpan="2" BorderThickness="0.5" BorderBrush="Gray">
+            <Paragraph Margin="10,5" FontWeight="Bold">
+              <Span><![CDATA[C:\documents\projects\multiscale-image-analysis\multiscale-image-analysis.vcxproj]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+        <TableRow>
+          <TableCell ColumnSpan="2" Background="WhiteSmoke" BorderBrush="Gray" BorderThickness="0.5" />
+        </TableRow>
+        <TableRow>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0" />
+          </TableCell>
+          <TableCell BorderThickness="0, 0, 0.5, 0" BorderBrush="Gray">
+            <Paragraph FontFamily="Consolas" Margin="4, 0">
+              <Span Background="LightGreen"><![CDATA[  <Import Project="$(QtMsBuild)\qt.targets" Condition="Exists('$(QtMsBuild)\qt.targets')" />]]></Span>
+            </Paragraph>
+          </TableCell>
+        </TableRow>
+      </TableRowGroup>
+    </Table>
+  </Section>
+  <Section>
+    <Paragraph />
+  </Section>
+</FlowDocument>
+<!--GR2kYp6s9ANMPMXgEetWTn08kBHmco0PDHqTuFq7WNw=-->
