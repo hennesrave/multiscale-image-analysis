@@ -10,24 +10,25 @@ class QToolButton;
 
 class NumberInput : public QWidget
 {
-    Q_OBJECT
+	Q_OBJECT
 public:
-    NumberInput( Override<double>& value, const std::function<bool( double )>& validator = {} );
+	NumberInput( Override<double>& value, const std::function<bool( double )>& validator = {} );
 
 private:
-    bool eventFilter( QObject* object, QEvent* event ) override;
-    void update_string_input();
+	bool eventFilter( QObject* object, QEvent* event ) override;
+	void update_string_input();
 
-    Override<double>& _value;
-    QLineEdit* _string_input = nullptr;
-    QToolButton* _button_reset = nullptr;
+	Override<double>& _value;
+	QLineEdit* _string_input = nullptr;
+	QToolButton* _button_reset = nullptr;
+	Override<int> _precision { 2, std::nullopt };
 };
 
 // ----- RangeInput ----- //
 
 class RangeInput : public QWidget
 {
-    Q_OBJECT
+	Q_OBJECT
 public:
-    RangeInput( Override<double>& lower, Override<double>& upper );
+	RangeInput( Override<double>& lower, Override<double>& upper );
 };

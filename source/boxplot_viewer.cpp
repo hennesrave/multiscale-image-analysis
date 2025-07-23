@@ -36,6 +36,7 @@ BoxplotViewer::BoxplotViewer( Database& database ) : _database { database }
 	QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, update_xaxis );
 	QObject::connect( segmentation.get(), &Segmentation::segment_identifier_changed, this, update_xaxis );
 	QObject::connect( segmentation.get(), &Segmentation::segment_color_changed, this, qOverload<>( &QWidget::update ) );
+	QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
 
 QSharedPointer<Feature> BoxplotViewer::feature() const noexcept
@@ -81,18 +82,34 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 	painter.setRenderHint( QPainter::Antialiasing, true );
 	painter.setClipRect( this->content_rectangle() );
 
+	const auto content_rectangle = this->content_rectangle();
+
+	auto hovered_statistics = std::optional<GroupedBoxplot::Statistics> {};
+
 	const auto render_boxplot = [&](
 		double position, const QColor& color,
 		double minimum, double maximum,
 		double average, double standard_deviation,
 		double lower_quartile, double upper_quartile, double median )
 	{
-		painter.setPen( QPen { QBrush { config::palette[600] }, 1.0 } );
-		painter.setBrush( QBrush { color } );
-
 		const auto xscreen = this->world_to_screen_x( position );
 		const auto xleft = this->world_to_screen_x( position - 0.25 );
 		const auto xright = this->world_to_screen_x( position + 0.25 );
+
+		const auto hovered = _cursor_position.x() >= xleft && _cursor_position.x() <= xright;
+		const auto thickness = hovered ? 2.0 : 1.0;
+		if( hovered )
+		{
+			hovered_statistics = GroupedBoxplot::Statistics {
+				.minimum = minimum,
+				.maximum = maximum,
+				.average = average,
+				.standard_deviation = standard_deviation,
+				.lower_quartile = lower_quartile,
+				.upper_quartile = upper_quartile,
+				.median = median
+			};
+		}
 
 		const auto yminimum = this->world_to_screen_y( minimum );
 		const auto ymaximum = this->world_to_screen_y( maximum );
@@ -108,7 +125,7 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 		auto brush_color = color;
 		brush_color.setAlpha( 50 );
 
-		painter.setPen( QPen { color, 1.0 } );
+		painter.setPen( QPen { color, thickness } );
 		painter.setBrush( brush_color );
 		painter.drawRect( QRectF { QPointF { xleft, yupper_quartile }, QPointF { xright, ylower_quartile } } );
 		painter.drawLine( QPointF { xleft, yminimum }, QPointF { xright, yminimum } );
@@ -116,10 +133,10 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 		painter.drawLine( QPointF { xscreen, ylower_quartile }, QPointF { xscreen, yminimum } );
 		painter.drawLine( QPointF { xscreen, yupper_quartile }, QPointF { xscreen, ymaximum } );
 
-		painter.setPen( QPen { color, 2.0 } );
+		painter.setPen( QPen { color, thickness + 1.0 } );
 		painter.drawLine( QPointF { xleft, ymedian }, QPointF { xright, ymedian } );
 
-		painter.setPen( QPen { color, 1.0, Qt::DashLine } );
+		painter.setPen( QPen { color, thickness, Qt::DashLine } );
 		painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
 		painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_upper } );
 		painter.drawLine( QPointF { xright, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
@@ -159,6 +176,64 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 				);
 			}
 		}
+	}
+
+	if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
+	{
+		if( const auto feature = _feature.lock() )
+		{
+			if( const auto [feature_values, _] = feature->values().request_value(); feature_values )
+			{
+				const auto yscreen = this->world_to_screen_y( feature_values->value( *element_index ) );
+				painter.setPen( QPen { QColor{ config::palette[500] }, 1.0, Qt::DashLine } );
+				painter.drawLine(
+					QPointF { static_cast<double>( content_rectangle.left() ), yscreen },
+					QPointF { static_cast<double>( content_rectangle.right() ), yscreen }
+				);
+			}
+		}
+	}
+
+	if( hovered_statistics.has_value() )
+	{
+		const auto range = hovered_statistics->maximum - hovered_statistics->minimum;
+		const auto precision = utility::stepsize_to_precision( range ) + 3;
+
+		auto labels_string = QString {
+			"average:"
+			"\nstdev:"
+			"\nmaximum:"
+			"\nupper:"
+			"\nmedian:"
+			"\nlower:"
+			"\nminimum:"
+		};
+		auto values_string = QString {
+			QString::number( hovered_statistics->average, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->standard_deviation, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->maximum, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->upper_quartile, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->median, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->lower_quartile, 'f', precision ) +
+			'\n' + QString::number( hovered_statistics->minimum, 'f', precision )
+		};
+
+		auto labels_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, labels_string ).toRectF();
+		auto values_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, values_string ).toRectF();
+
+		values_rectangle.moveTopRight( content_rectangle.topRight() + QPointF { -10.0, 10.0 } );
+		labels_rectangle.moveRight( values_rectangle.left() - 10.0 );
+		labels_rectangle.moveTop( values_rectangle.top() );
+
+		auto background_rectangle = labels_rectangle.united( values_rectangle ).marginsAdded( QMarginsF { 5.0, 5.0, 5.0, 5.0 } );
+
+		painter.setPen( Qt::NoPen );
+		painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
+		painter.drawRoundedRect( background_rectangle, 5.0, 5.0 );
+
+		painter.setPen( Qt::black );
+		painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
+		painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
 	}
 
 	painter.setClipRect( this->rect() );

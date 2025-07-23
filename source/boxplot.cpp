@@ -54,6 +54,10 @@ void GroupedBoxplot::update_feature( QSharedPointer<const Feature> feature )
 			{
 				_statistics.invalidate();
 			} );
+			QObject::connect( feature.get(), &QObject::destroyed, [this]
+			{
+				_statistics.invalidate();
+			} );
 		}
 
 		emit feature_changed( feature );
@@ -67,44 +71,40 @@ const Promise<Array<GroupedBoxplot::Statistics>>& GroupedBoxplot::statistics() c
 
 void GroupedBoxplot::compute_statistics( Array<Statistics>& statistics ) const
 {
-	if( const auto segmentation = _segmentation.lock() )
+	const auto segmentation = _segmentation.lock();
+	const auto feature = _feature.lock();
+
+	if( segmentation && feature )
 	{
-		if( const auto feature = _feature.lock() )
+		statistics = Array<Statistics>::allocate( segmentation->segment_count() );
+
+		feature->values().request_value();
+		feature->sorted_indices().request_value();
+		segmentation->element_indices().request_value();
+
+		const auto [element_indices, element_indices_lock] = segmentation->element_indices().await_value();
+
+		for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
 		{
-			statistics = Array<Statistics>::allocate( segmentation->segment_count() );
+			auto element_filter_feature = ElementFilterFeature { feature, element_indices[segment_number] };
 
-			feature->values().request_value();
-			feature->sorted_indices().request_value();
-			segmentation->element_indices().request_value();
+			const auto extremes = element_filter_feature.extremes().value();
+			const auto moments = element_filter_feature.moments().value();
+			const auto quantiles = element_filter_feature.quantiles().value();
 
-			const auto [element_indices, element_indices_lock] = segmentation->element_indices().await_value();
-
-			for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
-			{
-				auto element_filter_feature = ElementFilterFeature { feature, element_indices[segment_number] };
-
-				const auto extremes = element_filter_feature.extremes().value();
-				const auto moments = element_filter_feature.moments().value();
-				const auto quantiles = element_filter_feature.quantiles().value();
-
-				statistics[segment_number] = Statistics {
-					extremes.minimum,
-					extremes.maximum,
-					moments.average,
-					moments.standard_deviation,
-					quantiles.lower_quartile,
-					quantiles.upper_quartile,
-					quantiles.median
-				};
-			}
-		}
-		else
-		{
-			statistics = Array<Statistics> { 0, Statistics {} };
+			statistics[segment_number] = Statistics {
+				extremes.minimum,
+				extremes.maximum,
+				moments.average,
+				moments.standard_deviation,
+				quantiles.lower_quartile,
+				quantiles.upper_quartile,
+				quantiles.median
+			};
 		}
 	}
 	else
 	{
-		statistics = Array<Statistics> { 0, Statistics {} };
+		statistics.clear();
 	}
 }

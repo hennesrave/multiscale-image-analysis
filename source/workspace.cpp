@@ -57,6 +57,17 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
 	{
 		_image_viewer->update_colormap( colormap );
 	} );
+	QObject::connect( _database->features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
+	{
+		if( const auto feature = object.objectCast<Feature>() )
+		{
+			if( _database->features()->object_count() == 1 )
+			{
+				_histogram_viewer->update_feature( feature );
+				_boxplot_viewer->update_feature( feature );
+			}
+		}
+	} );
 
 	_database->colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::viridis.clone() ) );
 
@@ -73,8 +84,6 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
 			DatasetChannelsFeature::BaselineCorrection::eNone
 		} };
 		_database->features()->append( feature );
-		_histogram_viewer->update_feature( feature );
-		_boxplot_viewer->update_feature( feature );
 		dataset->statistics().unsubscribe( this );
 	} );
 }
