@@ -108,7 +108,7 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
                 bins_bottom[bin] = top;
             }
         };
-        render_histogram( *counts, config::palette[400] );
+        render_histogram( *counts, config::palette[200] );
 
         if( const auto [segmentation_counts, _] = _segmentation_histogram.counts().request_value(); segmentation_counts )
         {

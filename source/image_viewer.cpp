@@ -228,6 +228,8 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 _database.populate_segmentation_menu( context_menu );
                 context_menu.addSeparator();
 
+                context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
+
                 auto image_opacity_menu = context_menu.addMenu( "Image Opacity" );
                 auto image_opacity_action_group = new QActionGroup { image_opacity_menu };
                 image_opacity_action_group->setExclusive( true );
@@ -245,7 +247,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                     image_opacity_action_group->addAction( action );
                 }
 
-                auto segmentation_opacity_menu = context_menu.addMenu( "Segmentation Opacity" );
+                auto segmentation_opacity_menu = context_menu.addMenu( "Segmentation Opacity" ); 
                 auto segmentation_opacity_action_group = new QActionGroup { segmentation_opacity_menu };
                 segmentation_opacity_action_group->setExclusive( true );
 

@@ -1,5 +1,10 @@
 .vs
-build
+build/*
+build/python/*
 datasets
-external
+external/*
 intermediate
+
+!.gitkeep
+!build/python
+!build/python/requirements.txt
