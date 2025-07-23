@@ -170,7 +170,7 @@ void StackedHistogram::update_feature( QSharedPointer<const Feature> feature )
                 _edges.invalidate();
                 _counts.invalidate();
             } );
-            QObject::connect( feature.get(), &QObject::destroyed, [this]
+            QObject::connect( feature.get(), &QObject::destroyed, this, [this]
             {
                 _edges.invalidate();
                 _counts.invalidate();

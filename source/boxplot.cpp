@@ -54,7 +54,7 @@ void GroupedBoxplot::update_feature( QSharedPointer<const Feature> feature )
 			{
 				_statistics.invalidate();
 			} );
-			QObject::connect( feature.get(), &QObject::destroyed, [this]
+			QObject::connect( feature.get(), &QObject::destroyed, this, [this]
 			{
 				_statistics.invalidate();
 			} );
