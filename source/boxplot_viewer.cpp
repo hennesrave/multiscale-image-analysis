@@ -78,11 +78,15 @@ void BoxplotViewer::update_feature( QSharedPointer<Feature> feature )
 
 void BoxplotViewer::paintEvent( QPaintEvent* event )
 {
+	auto timer = Timer {};
+	Logger::info() << "Started rendering...";
+
 	auto painter = QPainter { this };
 	painter.setRenderHint( QPainter::Antialiasing, true );
 	painter.setClipRect( this->content_rectangle() );
 
 	const auto content_rectangle = this->content_rectangle();
+	const auto segmentation = _database.segmentation();
 
 	auto hovered_statistics = std::optional<GroupedBoxplot::Statistics> {};
 
@@ -146,8 +150,6 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 		painter.setPen( Qt::NoPen );
 		painter.setBrush( color );
 		painter.drawEllipse( QPointF { xscreen, yaverage }, 5.0, 5.0 );
-		painter.drawEllipse( QPointF { xscreen, ystandard_deviation_lower }, 2.5, 2.5 );
-		painter.drawEllipse( QPointF { xscreen, ystandard_deviation_upper }, 2.5, 2.5 );
 	};
 
 	if( auto feature = _feature.lock() )
@@ -161,8 +163,7 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 
 	if( const auto [segmentation_statistics, _] = _boxplot.statistics().request_value(); segmentation_statistics )
 	{
-		const auto segmentation = _database.segmentation();
-		for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+		for( uint32_t segment_number = 1; segment_number < segmentation_statistics->size(); ++segment_number )
 		{
 			const auto segment = segmentation->segment( segment_number );
 			if( segment->element_count() > 0 )
@@ -238,6 +239,8 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 
 	painter.setClipRect( this->rect() );
 	PlottingWidget::paintEvent( event );
+
+	Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
 }
 
 void BoxplotViewer::mousePressEvent( QMouseEvent* event )
@@ -263,6 +266,7 @@ void BoxplotViewer::mousePressEvent( QMouseEvent* event )
 			action->setChecked( feature == _feature );
 		}
 
+		context_menu.addAction( "Reset View", [this] { this->reset_view(); } );
 		context_menu.addAction( "Export", [this] { this->export_boxplots(); } );
 
 		context_menu.exec( event->globalPosition().toPoint() );

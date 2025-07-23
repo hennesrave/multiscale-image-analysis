@@ -46,10 +46,6 @@ const Promise<Array<Dataset::Statistics>>& Dataset::segmentation_statistics( QSh
 
 Dataset::SpatialMetadata::SpatialMetadata( uint32_t width, uint32_t height ) : dimensions { width, height }
 {
-    if( width == 0 || height == 0 )
-    {
-        throw std::invalid_argument( "Width and height must be greater than zero." );
-    }
 }
 
 uint32_t Dataset::SpatialMetadata::element_index( vec2<uint32_t> coordinates ) const

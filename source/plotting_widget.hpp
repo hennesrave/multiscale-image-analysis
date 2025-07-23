@@ -79,6 +79,8 @@ public:
     virtual double screen_to_world_y( double value ) const;
     QPointF screen_to_world( const QPointF& screen ) const;
 
+    void reset_view();
+
 signals:
     void margins_changed( const QMargins& margins );
     void linewidth_changed( int linewidth );

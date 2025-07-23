@@ -40,7 +40,7 @@ int main( int argc, char** argv )
   \ \  \    \ \  \ \  \ \  \ \  \       
    \ \__\    \ \__\ \__\ \__\ \__\      (づ｡◕‿‿◕｡)づ Thank you for using this software~!
     \|__|     \|__|\|__|\|__|\|__|      
-    )" }.arg( config::application_version );
+    )" }.arg( config::application_version_string );
 
 	// Initialize python
 	py::interpreter::python_home = config::executable_directory.absoluteFilePath( "python" ).toStdWString();
@@ -60,7 +60,7 @@ int main( int argc, char** argv )
 	if( database )
 	{
 		auto workspace = Workspace { database };
-		workspace.setWindowTitle( QString { config::application_display_name } + " - v" + config::application_version );
+		workspace.setWindowTitle( QString { config::application_display_name } + " - v" + config::application_version_string );
 		workspace.resize( 1600, 900 );
 		workspace.showMaximized();
 

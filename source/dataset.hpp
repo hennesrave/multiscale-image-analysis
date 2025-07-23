@@ -12,6 +12,13 @@ class Dataset : public QObject
 {
     Q_OBJECT
 public:
+    enum class BaseType : uint32_t
+    {
+        eInt8, eInt16, eInt32,
+        eUint8, eUint16, eUint32,
+        eFloat, eDouble
+    };
+
     struct SpatialMetadata
     {
         union
@@ -46,11 +53,11 @@ public:
         double average = 0.0;;
     };
 
-
     Dataset();
 
     virtual uint32_t element_count() const noexcept = 0;
     virtual uint32_t channel_count() const noexcept = 0;
+    virtual BaseType base_type() const noexcept = 0;
 
     virtual Array<double> element_intensities( uint32_t element_index ) const = 0;
     virtual double channel_position( uint32_t channel_index ) const = 0;
@@ -114,6 +121,18 @@ public:
     uint32_t channel_count() const noexcept override
     {
         return static_cast<uint32_t>( _channel_positions.size() );
+    }
+    BaseType base_type() const noexcept override
+    {
+        if constexpr( std::is_same_v<value_type, int8_t> )              return BaseType::eInt8;
+        else if constexpr( std::is_same_v<value_type, int16_t> )        return BaseType::eInt16;
+        else if constexpr( std::is_same_v<value_type, int32_t> )        return BaseType::eInt32;
+        else if constexpr( std::is_same_v<value_type, uint8_t> )        return BaseType::eUint8;
+        else if constexpr( std::is_same_v<value_type, uint16_t> )       return BaseType::eUint16;
+        else if constexpr( std::is_same_v<value_type, uint32_t> )       return BaseType::eUint32;
+        else if constexpr( std::is_same_v<value_type, float> )          return BaseType::eFloat;
+        else if constexpr( std::is_same_v<value_type, double> )         return BaseType::eDouble;
+        else static_assert( false, "Unsupported value type" );
     }
 
     Array<double> element_intensities( uint32_t element_index ) const override

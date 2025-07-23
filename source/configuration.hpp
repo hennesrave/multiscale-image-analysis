@@ -5,7 +5,8 @@
 
 namespace config
 {
-    constexpr inline auto application_version = "1.0.0";
+    constexpr inline auto application_version = static_cast<uint64_t>( 0 << 16 | 9 << 8 | 0 << 0 );
+    constexpr inline auto application_version_string = "0.9.0";
     constexpr inline auto application_identifier = "multiscale-image-analysis";
     constexpr inline auto application_display_name = "MIA: Multiscale Image Analysis";
 

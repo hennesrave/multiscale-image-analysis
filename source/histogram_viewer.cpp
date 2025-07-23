@@ -73,6 +73,9 @@ void HistogramViewer::update_bincount( uint32_t bincount )
 
 void HistogramViewer::paintEvent( QPaintEvent* event )
 {
+	auto timer = Timer {};
+	Logger::info() << "Started rendering...";
+
 	auto painter = QPainter { this };
 	painter.setRenderHint( QPainter::Antialiasing, true );
 	painter.setClipRect( this->content_rectangle() );
@@ -219,6 +222,8 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
 
 	painter.setClipRect( this->rect() );
 	PlottingWidget::paintEvent( event );
+
+	Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
 }
 
 void HistogramViewer::mousePressEvent( QMouseEvent* event )
@@ -244,6 +249,7 @@ void HistogramViewer::mousePressEvent( QMouseEvent* event )
 			action->setChecked( feature == _histogram.feature() );
 		}
 
+		context_menu.addAction( "Reset View", [this] { this->reset_view(); } );
 		context_menu.addAction( "Export", [this] { this->export_histograms(); } );
 
 		context_menu.exec( event->globalPosition().toPoint() );

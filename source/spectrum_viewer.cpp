@@ -91,6 +91,9 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
 
 void SpectrumViewer::paintEvent( QPaintEvent* event )
 {
+    auto timer = Timer {};
+    Logger::info() << "Started rendering...";
+
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing, true );
     painter.setClipRect( this->content_rectangle() );
@@ -328,6 +331,8 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
 
     painter.setClipRect( this->rect() );
     PlottingWidget::paintEvent( event );
+
+    Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
 }
 
 void SpectrumViewer::mousePressEvent( QMouseEvent* event )
@@ -455,30 +460,30 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             actions_visualization_mode->addAction( visualization_mode_lollipop );
         }
 
-        {
-            auto baseline_correction_menu = menu.addMenu( "Baseline Correction" );
-            baseline_correction_menu->addAction( "Minimum", [this]
-            {
-                const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to whole the dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
-                if( answer == QMessageBox::Yes )
-                {
-                    _database.dataset()->apply_baseline_correction_minimum();
-                }
-            } );
-            baseline_correction_menu->addAction( "Linear", [this]
-            {
-                const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a linear baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
-                if( answer == QMessageBox::Yes )
-                {
-                    _database.dataset()->apply_baseline_correction_linear();
-                }
-            } );
-        }
+        menu.addAction( "Reset View", [this] { this->reset_view(); } );
+        menu.addSeparator();
 
+        auto baseline_correction_menu = menu.addMenu( "Baseline Correction" );
+        baseline_correction_menu->addAction( "Minimum", [this]
         {
-            auto export_menu = menu.addAction( "Export" );
-            QObject::connect( export_menu, &QAction::triggered, this, &SpectrumViewer::export_spectra );
-        }
+            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to whole the dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            if( answer == QMessageBox::Yes )
+            {
+                _database.dataset()->apply_baseline_correction_minimum();
+            }
+        } );
+        baseline_correction_menu->addAction( "Linear", [this]
+        {
+            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a linear baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            if( answer == QMessageBox::Yes )
+            {
+                _database.dataset()->apply_baseline_correction_linear();
+            }
+        } );
+
+        auto export_menu = menu.addMenu( "Export" );
+        export_menu->addAction( "Spectra", [this] { this->export_spectra(); } );
+        export_menu->addAction( "Dataset", [this] { this->export_dataset(); } );
 
         menu.exec( event->globalPosition().toPoint() );
 
@@ -508,6 +513,11 @@ void SpectrumViewer::mouseReleaseEvent( QMouseEvent* event )
     this->update();
 }
 
+void SpectrumViewer::enterEvent( QEnterEvent* event )
+{
+    QWidget::enterEvent( event );
+    this->setFocus();
+}
 void SpectrumViewer::mouseMoveEvent( QMouseEvent* event )
 {
     const auto channel_index = this->screen_to_channel_index( event->position().x() );
@@ -706,5 +716,38 @@ void SpectrumViewer::export_spectra() const
             const auto& segment = _database.segmentation()->segment( segment_number );
             write_statistics( segment->identifier(), segment->element_count(), segmentation_statistics[segment_number] );
         }
+    }
+}
+void SpectrumViewer::export_dataset() const
+{
+    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia" );
+    if( !filepath.isEmpty() )
+    {
+        auto file = QFile { filepath };
+        if( !file.open( QFile::WriteOnly ) )
+        {
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
+            return;
+        }
+
+        auto stream = QDataStream { &file };
+        stream << config::application_version;
+
+        const auto dataset = _database.dataset();
+        stream << dataset->element_count() << dataset->channel_count();
+
+        const auto spatial_metadata = dataset->spatial_metadata();
+        stream.writeRawData( reinterpret_cast<const char*>( spatial_metadata ), sizeof( Dataset::SpatialMetadata ) );
+
+        stream << dataset->base_type();
+
+        dataset->visit( [&stream] ( const auto& dataset )
+        {
+            const auto& channel_positions = dataset.channel_positions();
+            stream.writeRawData( reinterpret_cast<const char*>( channel_positions.data() ), channel_positions.bytes() );
+
+            const auto& intensities = dataset.intensities();
+            stream.writeRawData( reinterpret_cast<const char*>( intensities.data() ), intensities.bytes() );
+        } );
     }
 }

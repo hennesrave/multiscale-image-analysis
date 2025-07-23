@@ -33,6 +33,7 @@ public:
     void mousePressEvent( QMouseEvent* event ) override;
     void mouseReleaseEvent( QMouseEvent* event ) override;
 
+    void enterEvent( QEnterEvent* event ) override;
     void mouseMoveEvent( QMouseEvent* event ) override;
     void leaveEvent( QEvent* event ) override;
 
@@ -48,6 +49,7 @@ private:
     void update_hovered_feature();
     void baseline_correction() const;
     void export_spectra() const;
+    void export_dataset() const;
 
     Database& _database;
 

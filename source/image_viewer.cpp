@@ -60,6 +60,9 @@ void ImageViewer::resizeEvent( QResizeEvent* event )
 }
 void ImageViewer::paintEvent( QPaintEvent* event )
 {
+    auto timer = Timer {};
+    Logger::info() << "Started rendering...";
+
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
     painter.fillRect( _image_rectangle, Qt::black );
@@ -184,6 +187,8 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
         painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
     }
+
+    Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
 }
 void ImageViewer::wheelEvent( QWheelEvent* event )
 {

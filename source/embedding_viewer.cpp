@@ -375,6 +375,9 @@ void EmbeddingViewer::resizeEvent( QResizeEvent* event )
 }
 void EmbeddingViewer::paintEvent( QPaintEvent* event )
 {
+	auto timer = Timer {};
+	Logger::info() << "Started rendering...";
+
 	auto painter = QPainter { this };
 	painter.setRenderHint( QPainter::Antialiasing );
 
@@ -433,6 +436,8 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
 		painter.setBrush( brush_color );
 		painter.drawPolygon( _selection_polygon );
 	}
+
+	Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
 }
 void EmbeddingViewer::wheelEvent( QWheelEvent* event )
 {

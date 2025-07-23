@@ -348,6 +348,15 @@ QPointF PlottingWidget::screen_to_world( const QPointF& screen ) const
     return QPointF { this->screen_to_world_x( screen.x() ), this->screen_to_world_y( screen.y() ) };
 }
 
+void PlottingWidget::reset_view()
+{
+    _xaxis.domain = _xaxis.bounds;
+    _yaxis.domain = _yaxis.bounds;
+
+    emit xaxis_domain_changed( _xaxis.domain );
+    emit yaxis_domain_changed( _yaxis.domain );
+}
+
 int PlottingWidget::compute_xaxis_height() const noexcept
 {
     const auto fontheight = this->fontMetrics().height();
