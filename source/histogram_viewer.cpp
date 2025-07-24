@@ -36,6 +36,7 @@ HistogramViewer::HistogramViewer( Database& database ) : _database { database }
         const auto range = edges.last() - edges.first();
         this->update_xaxis_bounds( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
         this->update_xaxis_domain( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
+        this->update();
     } );
     QObject::connect( &_histogram, &Histogram::counts_changed, this, [this]
     {
@@ -43,8 +44,10 @@ HistogramViewer::HistogramViewer( Database& database ) : _database { database }
         const auto maximum = std::max( 1.0, static_cast<double>( *std::max_element( counts.begin(), counts.end() ) ) );
         this->update_yaxis_bounds( { 0.0, maximum + 0.01 * maximum } );
         this->update_yaxis_domain( { 0.0, maximum + 0.01 * maximum } );
+        this->update();
     } );
     QObject::connect( &_segmentation_histogram, &StackedHistogram::edges_changed, this, qOverload<>( &QWidget::update ) );
+    QObject::connect( &_segmentation_histogram, &StackedHistogram::counts_changed, this, qOverload<>( &QWidget::update ) );
 
     const auto segmentation = _database.segmentation();
     QObject::connect( segmentation.get(), &Segmentation::segment_color_changed, this, qOverload<>( &QWidget::update ) );

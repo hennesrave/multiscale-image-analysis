@@ -54,21 +54,8 @@ void BoxplotViewer::update_feature( QSharedPointer<Feature> feature )
 
         if( _feature = feature )
         {
-            QObject::connect( feature.get(), &Feature::values_changed, this, [this]
-            {
-                if( auto feature = _feature.lock() )
-                {
-                    const auto& extremes = feature->extremes();
-                    const auto range = extremes.maximum - extremes.minimum;
-                    this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
-                    this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
-                }
-                else
-                {
-                    this->update_yaxis_bounds( { 0.0, 1.0 } );
-                    this->update_yaxis_domain( { 0.0, 1.0 } );
-                }
-            } );
+            QObject::connect( feature.get(), &Feature::extremes_changed, this, &BoxplotViewer::on_feature_extremes_changed );
+            this->on_feature_extremes_changed();
         }
 
         _boxplot.update_feature( feature );
@@ -280,6 +267,21 @@ void BoxplotViewer::leaveEvent( QEvent* event )
     this->update();
 }
 
+void BoxplotViewer::on_feature_extremes_changed()
+{
+    if( auto feature = _feature.lock() )
+    {
+        const auto& extremes = feature->extremes();
+        const auto range = extremes.maximum - extremes.minimum;
+        this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+        this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+    }
+    else
+    {
+        this->update_yaxis_bounds( { 0.0, 1.0 } );
+        this->update_yaxis_domain( { 0.0, 1.0 } );
+    }
+}
 void BoxplotViewer::export_boxplots() const
 {
     const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Boxplots...", "", "*.csv" );

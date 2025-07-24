@@ -19,6 +19,7 @@ public:
     void leaveEvent( QEvent* event ) override;
 
 private:
+    void on_feature_extremes_changed();
     void export_boxplots() const;
 
     Database& _database;

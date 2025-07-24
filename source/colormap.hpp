@@ -91,7 +91,7 @@ signals:
     void feature_changed( QSharedPointer<Feature> feature );
 
 private:
-    void update_range();
+    void on_feature_extremes_changed();
 
     Array<vec4<float>> compute_colors() const override;
 

@@ -291,9 +291,8 @@ void Colormap1D::update_feature( QSharedPointer<Feature> feature )
         {
             QObject::connect( feature.get(), &Feature::values_changed, &_colors, &ComputedObject::invalidate );
             QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
-
-            QObject::connect( feature.get(), &Feature::extremes_changed, this, &Colormap1D::update_range );
-            this->update_range();
+            QObject::connect( feature.get(), &Feature::extremes_changed, this, &Colormap1D::on_feature_extremes_changed );
+            this->on_feature_extremes_changed();
         }
 
         emit feature_changed( _feature );
@@ -318,7 +317,7 @@ Override<double>& Colormap1D::upper() noexcept
     return _upper;
 }
 
-void Colormap1D::update_range()
+void Colormap1D::on_feature_extremes_changed()
 {
     if( auto feature = _feature.lock() )
     {

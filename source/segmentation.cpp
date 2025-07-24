@@ -89,6 +89,9 @@ Segmentation::Segmentation( uint32_t element_count ) : _segment_numbers { elemen
     QObject::connect( this, &Segmentation::segment_numbers_changed, &_element_colors, &ComputedObject::invalidate );
     QObject::connect( this, &Segmentation::segment_numbers_changed, &_element_indices, &ComputedObject::invalidate );
     QObject::connect( this, &Segmentation::segment_count_changed, &_element_indices, &ComputedObject::invalidate );
+
+    QObject::connect( &_element_colors, &ComputedObject::changed, this, &Segmentation::element_colors_changed );
+    QObject::connect( &_element_indices, &ComputedObject::changed, this, &Segmentation::element_indices_changed );
 }
 
 uint32_t Segmentation::element_count() const noexcept
