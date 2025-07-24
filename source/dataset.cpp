@@ -40,7 +40,7 @@ const Array<Dataset::Statistics>& Dataset::segmentation_statistics( QSharedPoint
         QObject::connect( this, &Dataset::intensities_changed, promise, &ComputedObject::invalidate );
         QObject::connect( segmentation_pointer, &Segmentation::segment_numbers_changed, promise, &ComputedObject::invalidate );
         QObject::connect( segmentation_pointer, &Segmentation::destroyed, this, [this, segmentation_pointer] { _segmentation_statistics.erase( segmentation_pointer ); } );
-        QObject::connect( promise, &ComputedObject::invalidate, [this, pointer = QWeakPointer { segmentation }]
+        QObject::connect( promise, &ComputedObject::changed, [this, pointer = QWeakPointer { segmentation }]
         {
             emit segmentation_statistics_changed( pointer.lock() );
         } );

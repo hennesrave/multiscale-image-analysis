@@ -10,7 +10,6 @@ GroupedBoxplot::GroupedBoxplot() : QObject {}
     _statistics.initialize( std::bind( &GroupedBoxplot::compute_statistics, this ) );
     QObject::connect( this, &GroupedBoxplot::segmentation_changed, &_statistics, &ComputedObject::invalidate );
     QObject::connect( this, &GroupedBoxplot::feature_changed, &_statistics, &ComputedObject::invalidate );
-
 }
 
 QSharedPointer<const Segmentation> GroupedBoxplot::segmentation() const

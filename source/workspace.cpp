@@ -15,15 +15,15 @@
 #include <qstackedlayout.h>
 #include <qtimer.h>
 
-Workspace::Workspace( QSharedPointer<Database> database ) : _database { database }
+Workspace::Workspace( Database& database ) : _database { database }
 {
     Console::info( "Creating widgets..." );
-    _boxplot_viewer = new BoxplotViewer { *database };
-    _colormap_viewer = new ColormapViewer { database->colormaps(), database->features() };
-    _embedding_viewer = new EmbeddingViewer { *database };
-    _histogram_viewer = new HistogramViewer { *database };
-    _image_viewer = new ImageViewer { *database };
-    _spectrum_viewer = new SpectrumViewer { *database };
+    _boxplot_viewer = new BoxplotViewer { database };
+    _colormap_viewer = new ColormapViewer { database.colormaps(), database.features() };
+    _embedding_viewer = new EmbeddingViewer { database };
+    _histogram_viewer = new HistogramViewer { database };
+    _image_viewer = new ImageViewer { database };
+    _spectrum_viewer = new SpectrumViewer { database };
     Console::info( "Finished creating widgets..." );
 
     Console::info( "Initializing workspace layout..." );
@@ -63,11 +63,11 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
     {
         _image_viewer->update_colormap( colormap );
     } );
-    QObject::connect( _database->features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
+    QObject::connect( database.features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
     {
         if( const auto feature = object.objectCast<Feature>() )
         {
-            if( _database->features()->object_count() == 1 )
+            if( _database.features()->object_count() == 1 )
             {
                 _histogram_viewer->update_feature( feature );
                 _boxplot_viewer->update_feature( feature );
@@ -76,7 +76,9 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
     } );
     Console::info( "Finished initialzing callbacks..." );
 
-    const auto dataset = _database->dataset();
+    const auto dataset = _database.dataset();
+    emit dataset->intensities_changed();
+
     const auto& statistics = dataset->statistics();
     const auto channel_index = static_cast<uint32_t>( std::max_element( statistics.channel_averages.begin(), statistics.channel_averages.end() ) - statistics.channel_averages.begin() );
 
@@ -88,6 +90,6 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
         DatasetChannelsFeature::BaselineCorrection::eNone
     } };
 
-    _database->colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::viridis.clone() ) );
-    _database->features()->append( feature );
+    _database.colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::viridis.clone() ) );
+    _database.features()->append( feature );
 }

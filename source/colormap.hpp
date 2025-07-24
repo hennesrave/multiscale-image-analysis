@@ -91,6 +91,8 @@ signals:
     void feature_changed( QSharedPointer<Feature> feature );
 
 private:
+    void update_range();
+
     Array<vec4<float>> compute_colors() const override;
 
     std::unique_ptr<ColormapTemplate> _colormap_template;

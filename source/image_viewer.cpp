@@ -58,8 +58,6 @@ void ImageViewer::resizeEvent( QResizeEvent* event )
 }
 void ImageViewer::paintEvent( QPaintEvent* event )
 {
-    auto timer = Timer {};
-
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
     painter.fillRect( _image_rectangle, Qt::black );

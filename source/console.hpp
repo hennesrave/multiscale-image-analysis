@@ -5,9 +5,6 @@
 class Console
 {
 public:
-    static std::string timestamp();
-    static std::wstring timestamp_wstring();
-
     static void initialize();
 
     static void info( const std::string& message, const std::source_location location = std::source_location::current() );

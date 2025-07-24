@@ -73,7 +73,6 @@ void HistogramViewer::update_bincount( uint32_t bincount )
 
 void HistogramViewer::paintEvent( QPaintEvent* event )
 {
-    auto timer = Timer {};
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing, true );
     painter.setClipRect( this->content_rectangle() );

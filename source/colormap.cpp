@@ -290,22 +290,10 @@ void Colormap1D::update_feature( QSharedPointer<Feature> feature )
         if( _feature = feature )
         {
             QObject::connect( feature.get(), &Feature::values_changed, &_colors, &ComputedObject::invalidate );
-            QObject::connect( feature.get(), &Feature::extremes_changed, this, [this]
-            {
-                if( auto feature = _feature.lock() )
-                {
-                    const auto lower_override = _lower.override_value();
-                    const auto upper_override = _upper.override_value();
-
-                    const auto& extremes = feature->extremes();
-                    _lower.update_automatic_value( extremes.minimum );
-                    _upper.update_automatic_value( extremes.maximum );
-
-                    _lower.update_override_value( lower_override );
-                    _upper.update_override_value( upper_override );
-                }
-            } );
             QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
+
+            QObject::connect( feature.get(), &Feature::extremes_changed, this, &Colormap1D::update_range );
+            this->update_range();
         }
 
         emit feature_changed( _feature );
@@ -328,6 +316,27 @@ const Override<double>& Colormap1D::upper() const noexcept
 Override<double>& Colormap1D::upper() noexcept
 {
     return _upper;
+}
+
+void Colormap1D::update_range()
+{
+    if( auto feature = _feature.lock() )
+    {
+        const auto lower_override = _lower.override_value();
+        const auto upper_override = _upper.override_value();
+
+        const auto& extremes = feature->extremes();
+        _lower.update_automatic_value( extremes.minimum );
+        _upper.update_automatic_value( extremes.maximum );
+
+        _lower.update_override_value( lower_override );
+        _upper.update_override_value( upper_override );
+    }
+    else
+    {
+        _lower.update_automatic_value( 0.0 );
+        _upper.update_automatic_value( 1.0 );
+    }
 }
 
 Array<vec4<float>> Colormap1D::compute_colors() const

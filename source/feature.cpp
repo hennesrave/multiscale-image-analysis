@@ -13,6 +13,11 @@ Feature::Feature()
 {
     QObject::connect( &_identifier, &Override<QString>::value_changed, this, [this] { emit identifier_changed( _identifier.value() ); } );
     QObject::connect( &_values, &ComputedObject::changed, this, &Feature::values_changed );
+    QObject::connect( &_values, &ComputedObject::changed, &_extremes, &ComputedObject::invalidate );
+    QObject::connect( &_values, &ComputedObject::changed, &_moments, &ComputedObject::invalidate );
+    QObject::connect( &_values, &ComputedObject::changed, &_quantiles, &ComputedObject::invalidate );
+    QObject::connect( &_values, &ComputedObject::changed, &_sorted_indices, &ComputedObject::invalidate );
+
     QObject::connect( &_extremes, &ComputedObject::changed, this, &Feature::extremes_changed );
     QObject::connect( &_moments, &ComputedObject::changed, this, &Feature::moments_changed );
     QObject::connect( &_quantiles, &ComputedObject::changed, this, &Feature::quantiles_changed );

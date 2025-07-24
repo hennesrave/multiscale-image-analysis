@@ -16,8 +16,8 @@ Histogram::Histogram( uint32_t bincount ) : QObject {}, _bincount { bincount }
     QObject::connect( this, &Histogram::bincount_changed, &_edges, &ComputedObject::invalidate );
     QObject::connect( this, &Histogram::bincount_changed, &_counts, &ComputedObject::invalidate );
 
-    QObject::connect( &_edges, &ComputedObject::invalidate, this, &Histogram::edges_changed );
-    QObject::connect( &_counts, &ComputedObject::invalidate, this, &Histogram::counts_changed );
+    QObject::connect( &_edges, &ComputedObject::changed, this, &Histogram::edges_changed );
+    QObject::connect( &_counts, &ComputedObject::changed, this, &Histogram::counts_changed );
 }
 
 QSharedPointer<const Feature> Histogram::feature() const
@@ -124,8 +124,8 @@ StackedHistogram::StackedHistogram( uint32_t bincount ) : QObject {}, _bincount 
 
     QObject::connect( this, &StackedHistogram::segmentation_changed, &_counts, &ComputedObject::invalidate );
 
-    QObject::connect( &_edges, &ComputedObject::invalidate, this, &StackedHistogram::edges_changed );
-    QObject::connect( &_counts, &ComputedObject::invalidate, this, &StackedHistogram::counts_changed );
+    QObject::connect( &_edges, &ComputedObject::changed, this, &StackedHistogram::edges_changed );
+    QObject::connect( &_counts, &ComputedObject::changed, this, &StackedHistogram::counts_changed );
 }
 
 QSharedPointer<const Segmentation> StackedHistogram::segmentation() const

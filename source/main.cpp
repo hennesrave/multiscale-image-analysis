@@ -39,7 +39,7 @@ int main( int argc, char** argv )
    \ \__\    \ \__\ \__\ \__\ \__\      (づ｡◕‿‿◕｡)づ Thank you for using this software~!
     \|__|     \|__|\|__|\|__|\|__|      
     )", config::application_version_string ) );
-    Console::info( std::format( L"Executable directory: {}", config::executable_directory.absolutePath().toStdWString() ) );
+    Console::info( std::format( "Executable directory: {}", config::executable_directory.absolutePath().toStdString() ) );
 
     // Initialize python
     py::interpreter::python_home = config::executable_directory.absoluteFilePath( "python" ).toStdWString();
@@ -49,15 +49,10 @@ int main( int argc, char** argv )
         py::interpreter::python_home + L"\\Lib\\site-packages"
     };
 
-    const auto database = []
-    {
-        if( const auto dataset = DatasetImporter::execute() ) return QSharedPointer<Database>::create( dataset );
-        else return QSharedPointer<Database> {};
-    }( );
-
     // Initialize workspace
-    if( database )
+    if( const auto dataset = DatasetImporter::execute() )
     {
+        auto database = Database { dataset };
         auto workspace = Workspace { database };
         workspace.setWindowTitle( QString { config::application_display_name } + " - v" + config::application_version_string );
         workspace.resize( 1600, 900 );

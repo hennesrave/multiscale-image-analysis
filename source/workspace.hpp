@@ -14,10 +14,10 @@ class Workspace : public QWidget
 {
     Q_OBJECT
 public:
-    Workspace( QSharedPointer<Database> database );
+    Workspace( Database& database );
 
 private:
-    QSharedPointer<Database> _database;
+    Database& _database;
 
     BoxplotViewer* _boxplot_viewer = nullptr;
     ColormapViewer* _colormap_viewer = nullptr;
