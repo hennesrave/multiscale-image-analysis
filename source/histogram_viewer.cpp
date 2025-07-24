@@ -1,9 +1,9 @@
 #include "histogram_viewer.hpp"
 
 #include "configuration.hpp"
+#include "console.hpp"
 #include "dataset.hpp"
 #include "feature.hpp"
-#include "logger.hpp"
 #include "segmentation.hpp"
 
 #include <qactiongroup.h>
@@ -21,26 +21,32 @@ HistogramViewer::HistogramViewer( Database& database ) : _database { database }
 
 	_histogram.edges().subscribe( this, [this]
 	{
-		const auto [edges, _] = _histogram.edges().await_value();
-		const auto precision = utility::stepsize_to_precision( edges[1] - edges[0] ) + 1;
-
-		auto ticks = std::vector<Tick> {};
-		for( const auto edge : edges )
+		if( const auto [edges_pointer, _] = _histogram.edges().request_value(); edges_pointer )
 		{
-			ticks.push_back( Tick { edge, QString::number( edge, 'f', precision ) } );
-		}
-		this->update_xaxis_ticks( std::move( ticks ) );
+            const auto& edges = *edges_pointer;
+			const auto precision = utility::stepsize_to_precision( edges[1] - edges[0] ) + 1;
 
-		const auto range = edges.last() - edges.first();
-		this->update_xaxis_bounds( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
-		this->update_xaxis_domain( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
+			auto ticks = std::vector<Tick> {};
+			for( const auto edge : edges )
+			{
+				ticks.push_back( Tick { edge, QString::number( edge, 'f', precision ) } );
+			}
+			this->update_xaxis_ticks( std::move( ticks ) );
+
+			const auto range = edges.last() - edges.first();
+			this->update_xaxis_bounds( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
+			this->update_xaxis_domain( { edges.first() - 0.01 * range, edges.last() + 0.01 * range } );
+		}
 	} );
 	_histogram.counts().subscribe( this, [this]
 	{
-		const auto [counts, _] = _histogram.counts().await_value();
-		const auto maximum = std::max( 1.0, static_cast<double>( *std::max_element( counts.begin(), counts.end() ) ) );
-		this->update_yaxis_bounds( { 0.0, maximum + 0.01 * maximum } );
-		this->update_yaxis_domain( { 0.0, maximum + 0.01 * maximum } );
+		if( const auto [counts_pointer, _] = _histogram.counts().request_value(); counts_pointer )
+		{
+            const auto& counts = *counts_pointer;
+			const auto maximum = std::max( 1.0, static_cast<double>( *std::max_element( counts.begin(), counts.end() ) ) );
+			this->update_yaxis_bounds( { 0.0, maximum + 0.01 * maximum } );
+			this->update_yaxis_domain( { 0.0, maximum + 0.01 * maximum } );
+		}
 	} );
 
 	_segmentation_histogram.update_segmentation( _database.segmentation() );
@@ -74,8 +80,6 @@ void HistogramViewer::update_bincount( uint32_t bincount )
 void HistogramViewer::paintEvent( QPaintEvent* event )
 {
 	auto timer = Timer {};
-	Logger::info() << "Started rendering...";
-
 	auto painter = QPainter { this };
 	painter.setRenderHint( QPainter::Antialiasing, true );
 	painter.setClipRect( this->content_rectangle() );
@@ -132,7 +136,7 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
 		const auto hovered_object_global = hovered_object;
 		hovered_object = {};
 
-		const auto [segmentation_counts, _] = _segmentation_histogram.counts().request_value();
+		const auto [segmentation_counts, segmentation_counts_lock] = _segmentation_histogram.counts().request_value();
 		if( segmentation_counts )
 		{
 			const auto segmentation = _database.segmentation();
@@ -223,7 +227,7 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
 	painter.setClipRect( this->rect() );
 	PlottingWidget::paintEvent( event );
 
-	Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
+	//Console::info( std::format( "Finished rendering in {} ms", timer.milliseconds() ) );
 }
 
 void HistogramViewer::mousePressEvent( QMouseEvent* event )

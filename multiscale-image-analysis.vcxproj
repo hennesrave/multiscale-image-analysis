@@ -94,6 +94,7 @@
       <LanguageStandard>stdcpp20</LanguageStandard>
       <MultiProcessorCompilation>true</MultiProcessorCompilation>
       <AdditionalIncludeDirectories>$(ProjectDir)external\;$(ProjectDir)external\Python313\include\;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+      <FavorSizeOrSpeed>Speed</FavorSizeOrSpeed>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -106,6 +107,7 @@
     <ClCompile Include="source\boxplot_viewer.cpp" />
     <ClCompile Include="source\colormap.cpp" />
     <ClCompile Include="source\colormap_viewer.cpp" />
+    <ClCompile Include="source\console.cpp" />
     <ClCompile Include="source\database.cpp" />
     <ClCompile Include="source\dataset.cpp" />
     <ClCompile Include="source\dataset_importer.cpp" />
@@ -116,7 +118,6 @@
     <ClCompile Include="source\histogram.cpp" />
     <ClCompile Include="source\histogram_viewer.cpp" />
     <ClCompile Include="source\image_viewer.cpp" />
-    <ClCompile Include="source\logger.cpp" />
     <ClCompile Include="source\main.cpp" />
     <ClCompile Include="source\number_input.cpp" />
     <ClCompile Include="source\plotting_widget.cpp" />
@@ -148,9 +149,9 @@
     <QtMoc Include="source\boxplot_viewer.hpp" />
     <QtMoc Include="source\boxplot.hpp" />
     <ClInclude Include="source\configuration.hpp" />
+    <ClInclude Include="source\console.hpp" />
     <ClInclude Include="source\dataset_importer.hpp" />
     <QtMoc Include="source\histogram.hpp" />
-    <ClInclude Include="source\logger.hpp" />
     <QtMoc Include="source\plotting_widget.hpp" />
     <ClInclude Include="source\python.hpp" />
     <QtMoc Include="source\segmentation.hpp" />

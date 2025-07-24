@@ -92,7 +92,6 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
 void SpectrumViewer::paintEvent( QPaintEvent* event )
 {
     auto timer = Timer {};
-    Logger::info() << "Started rendering...";
 
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing, true );
@@ -332,7 +331,7 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
     painter.setClipRect( this->rect() );
     PlottingWidget::paintEvent( event );
 
-    Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
+    //Console::info( std::format( "Finished rendering in {} ms", timer.milliseconds() ) );
 }
 
 void SpectrumViewer::mousePressEvent( QMouseEvent* event )

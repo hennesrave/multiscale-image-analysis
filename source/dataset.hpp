@@ -49,8 +49,8 @@ public:
         Array<double> channel_averages;
 
         double minimum = 0.0;
-        double maximum = 0.0;;
-        double average = 0.0;;
+        double maximum = 0.0;
+        double average = 0.0;
     };
 
     Dataset();

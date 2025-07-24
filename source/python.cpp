@@ -1,6 +1,6 @@
 #include "python.hpp"
 
-#include "logger.hpp"
+#include "console.hpp"
 
 #include <filesystem>
 
@@ -24,16 +24,18 @@ namespace pybind11
     {
         if( !_interpreter )
         {
-            Logger::info() << "Initializing global python interpreter...";
+            Console::info( std::format( L"Python home: {}", interpreter::python_home ) );
 
-            if( !std::filesystem::is_directory( interpreter::python_home + L"/Lib" ) )
+            const auto libraries_directory = interpreter::python_home + L"/Lib";
+            if( !std::filesystem::is_directory( libraries_directory ) )
             {
-                Logger::info() << "Installing python package requirements...";
+                Console::info( std::format( L"Python libraries directory does not exist: {}", libraries_directory ) );
+                Console::info( "Creating python libraries directory..." );
 
                 try
                 {
                     using namespace py::literals;
-                    auto interpreter = py::scoped_interpreter { py::configuration(), 0, nullptr, false};
+                    auto interpreter = py::scoped_interpreter { py::configuration(), 0, nullptr, false };
                     py::exec( R"(
                         import subprocess
                         subprocess.run( [f"{python_home}/python.exe", f"{python_home}/get-pip.py"] )
@@ -42,14 +44,14 @@ namespace pybind11
                 }
                 catch( const py::error_already_set& error )
                 {
-                    Logger::error() << "Python error during package installation: " << error.what();
+                    Console::critical( std::format( "Python error during package installation: {}", error.what() ) );
                 }
 
-                Logger::info() << "Finished installing python package requirements!";
+                Console::info( "Finished installing python package requirements!" );
             }
 
             _interpreter.reset( new py::scoped_interpreter { py::configuration(), 0, nullptr, false } );
-            Logger::info() << "Finished initializing global python interpreter!";
+            Console::info( "Finished initializing global python interpreter!" );
         }
     }
 

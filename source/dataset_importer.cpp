@@ -1,7 +1,6 @@
 #include "dataset_importer.hpp"
 
 #include "dataset.hpp"
-#include "logger.hpp"
 #include "number_input.hpp"
 #include "python.hpp"
 
@@ -164,7 +163,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                     const auto average_single_ion_area = run_info["AverageSingleIonArea"].get<float>();
                     const auto acquisition_period = run_info["SegmentInfo"][0]["AcquisitionPeriodNs"].get<uint64_t>();
 
-                    Logger::info() << "Importing subdirectory: " << subdirectory;
+                    Console::info( std::format( "Importing subdirectory: {}", subdirectory.string() ) );
 
                     auto current_laserspot_linebreak_index = uint32_t { 0 };
                     auto current_coordinates = vec2<double> { laser_lines[current_line_index].start_x, laser_lines[current_line_index].start_y };
@@ -273,7 +272,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                     for( const auto& entry : integrated_index )
                     {
                         const auto filepath = subdirectory / ( std::to_string( entry["FileNum"].get<int32_t>() ) + ".integ" );
-                        Logger::info() << filepath;
+                        Console::info( filepath.string() );
 
                         auto stream = std::ifstream { filepath, std::ios::in | std::ios::binary | std::ios::ate };
 
@@ -432,7 +431,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 using namespace py::literals;
                 const auto zarr_dataset = py::module::import( "zarr" ).attr( "open" )( fileinfo.absolutePath().toStdString(), "mode"_a = "r" );
                 auto hypercube = static_cast<py::array>( zarr_dataset["hypercube"][py::make_tuple()] );
-                auto wavenumbers = static_cast<py::array>( zarr_dataset["wvnm"][py::make_tuple()] );
+                auto wavenumbers = static_cast<py::array>( zarr_dataset["wvnm"][py::make_tuple()].attr( "astype" )( py::dtype::of<double>() ) );
 
                 if( !hypercube.dtype().is( py::dtype::of<float>() ) )
                 {
@@ -456,18 +455,17 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 auto intensities_pointer = static_cast<float*>( hypercube.mutable_data() );
                 auto wavenumbers_pointer = static_cast<double*>( wavenumbers.mutable_data() );
 
-                dataset.reset(
-                    new TensorDataset<float> { Dataset::SpatialMetadata { dimensions.x, dimensions.y },
+                dataset.reset( new TensorDataset<float> { Dataset::SpatialMetadata { dimensions.y, dimensions.x },
                     Matrix<float>::from_pointer( { static_cast<size_t>( dimensions[0] ) * dimensions[1], dimensions[2] }, intensities_pointer ),
-                    Array<double>::from_pointer( { dimensions[2] }, wavenumbers_pointer )
-                    } );
+                    Array<double>::from_pointer( { dimensions[2] }, wavenumbers_pointer ) }
+                );
 
                 hypercube.release();
                 wavenumbers.release();
             }
             catch( const py::error_already_set& error )
             {
-                Logger::error() << "Python error during dataset import: " << error.what();
+                Console::error( std::format( "Python error during dataset import: {}", error.what() ) );
                 QMessageBox::critical( nullptr, "", "Failed to import dataset", QMessageBox::Ok );
                 return nullptr;
             }
@@ -535,7 +533,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
             }
             catch( const py::error_already_set& error )
             {
-                Logger::error() << "Python error during dataset import: " << error.what();
+                Console::error( std::format( "Python error during dataset import: {}", error.what() ) );
                 QMessageBox::critical( nullptr, "", "Failed to import dataset", QMessageBox::Ok );
                 return nullptr;
             }

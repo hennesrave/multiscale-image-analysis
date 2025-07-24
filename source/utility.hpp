@@ -1,6 +1,6 @@
 #pragma once
 #include "configuration.hpp"
-#include "logger.hpp"
+#include "console.hpp"
 #include "tensor.hpp"
 
 #include <algorithm>
@@ -28,7 +28,7 @@ namespace utility
     template<class IndexType> void parallel_for( IndexType start, IndexType end, auto&& callable )
     {
         const auto range = std::views::iota( start, end );
-        std::for_each( std::execution::par, range.begin(), range.end(), std::forward<decltype( callable )>( callable ) );
+        std::for_each( std::execution::seq, range.begin(), range.end(), std::forward<decltype( callable )>( callable ) );
     }
 }
 
@@ -528,9 +528,9 @@ public:
     using value_type = T;
 
     Promise() noexcept = default;
-    Promise( auto&& compute_function )
+    Promise( const QString& identifier, auto&& compute_function )
     {
-        this->initialize( std::forward<decltype( compute_function )>( compute_function ) );
+        this->initialize( identifier, std::forward<decltype( compute_function )>( compute_function ) );
     }
 
     Promise( const Promise& ) = delete;
@@ -552,20 +552,24 @@ public:
         }
     }
 
-    void initialize( auto&& compute_function )
+    void initialize( const QString& identifier, auto&& compute_function )
     {
         if( _compute_thread.joinable() )
         {
             throw;
         }
 
+        this->setObjectName( identifier );
         _compute_thread = std::thread { [this, compute_function = std::forward<decltype( compute_function )>( compute_function )]
         {
             auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
 
             while( true )
             {
+                Console::info( std::format( "Promise going to sleep: {}", this->objectName().toStdString() ) );
                 _flags_condition_variable.wait( flags_lock, [this] { return _execute || _terminate; } );
+                Console::info( std::format( "Promise waking up: {}", this->objectName().toStdString() ) );
+
                 if( _terminate )
                 {
                     break;
@@ -574,10 +578,14 @@ public:
 
                 flags_lock.unlock();
                 {
+                    Console::info( std::format( "Promise acquiring write lock: {}", this->objectName().toStdString() ) );
                     auto value_lock = std::unique_lock<std::shared_mutex> { _value_mutex };
+                    Console::info( std::format( "Promise starting computation: {}", this->objectName().toStdString() ) );
                     compute_function( _value );
+                    Console::info( std::format( "Promise finished computation: {}", this->objectName().toStdString() ) );
                 }
                 flags_lock.lock();
+                Console::info( std::format( "Promise flags: {}, {}, {}", _terminate, _invalidated, _finished ) );
 
                 if( _terminate )
                 {
@@ -594,6 +602,8 @@ public:
                     _finished = true;
 
                     flags_lock.unlock();
+
+                    Console::info( std::format( "Promise emitting finished signal: {}", this->objectName().toStdString() ) );
                     emit finished();
                     _finished_condition_variable.notify_all();
                     flags_lock.lock();
@@ -604,6 +614,7 @@ public:
 
     std::pair<const value_type&, std::shared_lock<std::shared_mutex>> await_value() const
     {
+        Console::info( std::format( "Awaiting value for promise: {}", this->objectName().toStdString() ) );
         auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
         if( !_finished )
         {
@@ -620,6 +631,7 @@ public:
     }
     std::pair<const value_type*, std::shared_lock<std::shared_mutex>> request_value() const
     {
+        Console::info( std::format( "Requesting value for promise: {}", this->objectName().toStdString() ) );
         auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
         if( _finished )
         {
@@ -631,6 +643,7 @@ public:
             _execute = true;
             flags_lock.unlock();
             _flags_condition_variable.notify_one();
+            Console::info( std::format( "Requesting computation for promise: {}", this->objectName().toStdString() ) );
 
             return std::pair<const value_type*, std::shared_lock<std::shared_mutex>> { nullptr, std::shared_lock<std::shared_mutex> {} };
         }
@@ -665,18 +678,17 @@ public:
 
     void invalidate()
     {
+        Console::info( std::format( "Invalidating promise: {}", this->objectName().toStdString() ) );
         {
             auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
             if( !_invalidated )
             {
                 _finished = false;
                 _invalidated = true;
-                if( this->receivers( SIGNAL( finished() ) ) )
-                {
-                    _execute = true;
-                }
+                _execute = true;
 
                 flags_lock.unlock();
+                Console::info( std::format( "Invalidated promise: {}", this->objectName().toStdString() ) );
                 emit invalidated();
             }
         }

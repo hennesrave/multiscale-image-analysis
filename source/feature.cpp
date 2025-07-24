@@ -4,11 +4,11 @@
 
 Feature::Feature() : QObject {},
 _identifier { "Feature", std::nullopt },
-_values { [this]( Array<double>& values ) { this->compute_values( values ); } },
-_extremes { [this]( Extremes& extremes ) { this->compute_extremes( extremes ); } },
-_moments { [this]( Moments& moments ) { this->compute_moments( moments ); } },
-_quantiles { [this]( Quantiles& quantiles ) { this->compute_quantiles( quantiles ); } },
-_sorted_indices { [this]( Array<uint32_t>& sorted_indices ) { this->compute_sorted_indices( sorted_indices ); } }
+_values { "Feature::values", [this] ( Array<double>& values ) { this->compute_values( values ); } },
+_extremes { "Feature::extremes", [this] ( Extremes& extremes ) { this->compute_extremes( extremes ); } },
+_moments { "Feature::moments", [this] ( Moments& moments ) { this->compute_moments( moments ); } },
+_quantiles { "Feature::quantiles", [this] ( Quantiles& quantiles ) { this->compute_quantiles( quantiles ); } },
+_sorted_indices { "Feature::sorted_indices", [this] ( Array<uint32_t>& sorted_indices ) { this->compute_sorted_indices( sorted_indices ); } }
 {
     QObject::connect( &_identifier, &Override<QString>::value_changed, this, [this] { emit identifier_changed( _identifier.value() ); } );
     QObject::connect( &_values, &PromiseObject::invalidated, &_extremes, &Promise<Extremes>::invalidate );
@@ -159,7 +159,7 @@ void Feature::compute_sorted_indices( Array<uint32_t>& sorted_indices ) const
 ElementFilterFeature::ElementFilterFeature( QSharedPointer<const Feature> feature, std::vector<uint32_t> element_indices )
     : Feature {}, _feature { feature }, _element_indices { std::move( element_indices ) }
 {
-
+    _values.setObjectName( "ElementFilterFeature::values" );
 }
 
 uint32_t ElementFilterFeature::element_count() const noexcept
@@ -169,6 +169,8 @@ uint32_t ElementFilterFeature::element_count() const noexcept
 
 void ElementFilterFeature::compute_values( Array<double>& values ) const
 {
+    Console::info( "ElementFilterFeature::compute_values" );
+
     if( values.size() != this->element_count() )
     {
         values = Array<double> { this->element_count(), 0.0 };
@@ -176,7 +178,10 @@ void ElementFilterFeature::compute_values( Array<double>& values ) const
 
     if( const auto feature = _feature.lock() )
     {
+        Console::info( "ElementFilterFeature::compute_values acquiring feature values" );
         const auto [feature_values, _] = feature->values().await_value();
+        Console::info( "ElementFilterFeature::compute_values acquired feature values" );
+
         utility::parallel_for( 0u, this->element_count(), [&] ( uint32_t element_index )
         {
             values[element_index] = feature_values[_element_indices[element_index]];

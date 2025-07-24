@@ -1,6 +1,5 @@
 #include "segment_selector.hpp"
 
-#include "logger.hpp"
 #include "segmentation.hpp"
 
 #include <qcombobox.h>

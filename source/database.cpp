@@ -1,6 +1,5 @@
 #include "database.hpp"
 
-#include "logger.hpp"
 #include "segmentation_manager.hpp"
 
 #include <qfiledialog.h>
@@ -147,7 +146,7 @@ void Database::populate_segmentation_menu( QMenu& context_menu )
             {
                 auto stream = QTextStream { &file };
                 const auto json = _segmentation->serialize();
-                stream << json.dump( 4 );
+                stream << QString::fromStdString( json.dump( 4 ) );
             }
             else
             {

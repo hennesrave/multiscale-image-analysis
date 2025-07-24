@@ -1,6 +1,5 @@
 #include "colormap.hpp"
 
-#include "logger.hpp"
 #include "feature.hpp"
 
 // ----- ColormapTemplate ----- //
@@ -198,7 +197,7 @@ const std::vector<std::pair<const char*, const ColormapTemplate&>> ColormapTempl
 
 Colormap::Colormap()
 {
-    _colors.initialize( [this] ( auto& colors ) { this->compute_colors( colors ); } );
+    _colors.initialize( "Colormap::colors", [this] (auto& colors) { this->compute_colors(colors); });
     QObject::connect( this, &Colormap::colors_changed, &_colors, &Promise<Array<vec4<float>>>::invalidate );
 }
 
@@ -213,7 +212,7 @@ Colormap1D::Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template ) : 
 {
     if( !_colormap_template )
     {
-        Logger::error() << "Invalid colormap template provided." << Logger::terminate;
+        Console::critical( "Invalid colormap template provided." );
     }
 
     QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, this, &Colormap1D::colors_changed );
@@ -263,7 +262,7 @@ void Colormap1D::update_colormap_template( std::unique_ptr<ColormapTemplate> col
     }
     else
     {
-        Logger::warning() << "Invalid colormap template provided.";
+        Console::critical( "Invalid colormap template provided." );
     }
 }
 

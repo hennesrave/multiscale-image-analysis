@@ -9,8 +9,6 @@
 #include "segmentation.hpp"
 #include "segmentation_manager.hpp"
 
-#include "logger.hpp"
-
 #include <qactiongroup.h>
 #include <qapplication.h>
 #include <qbuffer.h>
@@ -61,7 +59,6 @@ void ImageViewer::resizeEvent( QResizeEvent* event )
 void ImageViewer::paintEvent( QPaintEvent* event )
 {
     auto timer = Timer {};
-    Logger::info() << "Started rendering...";
 
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
@@ -162,10 +159,12 @@ void ImageViewer::paintEvent( QPaintEvent* event )
             {
                 if( auto feature = colormap_1d->feature() )
                 {
-                    const auto [feature_values, _] = feature->values().await_value();
-                    const auto value = feature_values[*element_index];
-                    labels_string += QString { "\nvalue: " };
-                    values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
+                    if( const auto [feature_values, _] = feature->values().request_value(); feature_values )
+                    {
+                        const auto value = feature_values->value( *element_index );
+                        labels_string += QString { "\nvalue: " };
+                        values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
+                    }
                 }
             }
         }
@@ -188,7 +187,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
     }
 
-    Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
+    //Console::info( std::format( "Finished rendering in {} ms", timer.milliseconds() ) );
 }
 void ImageViewer::wheelEvent( QWheelEvent* event )
 {
@@ -252,7 +251,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                     image_opacity_action_group->addAction( action );
                 }
 
-                auto segmentation_opacity_menu = context_menu.addMenu( "Segmentation Opacity" ); 
+                auto segmentation_opacity_menu = context_menu.addMenu( "Segmentation Opacity" );
                 auto segmentation_opacity_action_group = new QActionGroup { segmentation_opacity_menu };
                 segmentation_opacity_action_group->setExclusive( true );
 

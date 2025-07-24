@@ -2,7 +2,7 @@
 
 // ----- Dataset ----- //
 
-Dataset::Dataset() : QObject {}, _statistics { [this]( Statistics& statistics ) { this->compute_statistics( statistics ); } }
+Dataset::Dataset() : QObject {}, _statistics { "Dataset::statistics", [this] ( Statistics& statistics ) { this->compute_statistics( statistics ); } }
 {
     QObject::connect( &_channel_identifier_precision, &Override<int>::value_changed, this, &Dataset::channel_identifiers_changed );
     QObject::connect( this, &Dataset::invalidated, &_statistics, &Promise<Statistics>::invalidate );
@@ -22,7 +22,7 @@ const Promise<Array<Dataset::Statistics>>& Dataset::segmentation_statistics( QSh
     const auto segmentation_pointer = segmentation.get();
     if( !_segmentation_statistics.contains( segmentation_pointer ) )
     {
-        auto promise = new Promise<Array<Statistics>> { [this, pointer = QWeakPointer { segmentation }]( Array<Statistics>& segmentation_statistics )
+        auto promise = new Promise<Array<Statistics>> { "Dataset::segmentation_statistics", [this, pointer = QWeakPointer { segmentation }]( Array<Statistics>& segmentation_statistics )
         {
             if( auto segmentation = pointer.lock() )
             {
@@ -63,6 +63,7 @@ DatasetChannelsFeature::DatasetChannelsFeature( QSharedPointer<const Dataset> da
     : Feature {}, _dataset { dataset }, _channel_range { channel_range }, _reduction { reduction }, _baseline_correction { baseline_correction }
 {
     QObject::connect( dataset.get(), &Dataset::invalidated, &_values, &Promise<Array<double>>::invalidate );
+    _values.setObjectName( "DatasetChannelsFeature::values" );
     this->update_identifier();
 }
 
@@ -84,6 +85,8 @@ void DatasetChannelsFeature::update_channel_range( Range<uint32_t> channel_range
             std::swap( channel_range.lower, channel_range.upper );
         }
 
+        Console::info( "DatasetChannelsFeature::update_channel_range" );
+        Console::info( "----------------------------------------------------------------------" );
         _channel_range = channel_range;
         _values.invalidate();
         emit channel_range_changed( _channel_range );
@@ -144,6 +147,7 @@ void DatasetChannelsFeature::update_identifier()
 }
 void DatasetChannelsFeature::compute_values( Array<double>& values ) const
 {
+    Console::info( "DatasetChannelsFeature::compute_values" );
     if( const auto dataset = _dataset.lock() )
     {
         dataset->visit( [&] ( const auto& dataset )

@@ -1,6 +1,5 @@
 #include "number_input.hpp"
 
-#include "logger.hpp"
 #include "utility.hpp"
 
 #include <qevent.h>

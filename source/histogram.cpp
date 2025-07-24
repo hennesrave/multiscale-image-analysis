@@ -7,8 +7,8 @@
 
 Histogram::Histogram( uint32_t bincount ) : QObject {}, _bincount { bincount }
 {
-    _edges.initialize( [this] ( Array<double>& edges ) { compute_edges( edges ); } );
-    _counts.initialize( [this] ( Array<uint32_t>& counts ) { compute_counts( counts ); } );
+    _edges.initialize( "Histogram::edges", [this] ( Array<double>& edges ) { compute_edges( edges ); } );
+    _counts.initialize( "Histogram::counts", [this] ( Array<uint32_t>& counts ) { compute_counts( counts ); } );
 
     QObject::connect( this, &Histogram::feature_changed, &_edges, &Promise<Array<double>>::invalidate );
     QObject::connect( this, &Histogram::feature_changed, &_counts, &Promise<Array<uint32_t>>::invalidate );
@@ -117,8 +117,8 @@ void Histogram::compute_counts( Array<uint32_t>& counts ) const
 
 StackedHistogram::StackedHistogram( uint32_t bincount ) : QObject {}, _bincount { bincount }
 {
-    _edges.initialize( [this] ( Array<double>& edges ) { compute_edges( edges ); } );
-    _counts.initialize( [this] ( Array<Array<uint32_t>>& counts ) { compute_counts( counts ); } );
+    _edges.initialize( "StackedHistogram::edges", [this] ( Array<double>& edges ) { compute_edges( edges ); } );
+    _counts.initialize( "StackedHistogram::counts", [this] ( Array<Array<uint32_t>>& counts ) { compute_counts( counts ); } );
 
     QObject::connect( this, &StackedHistogram::segmentation_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
 

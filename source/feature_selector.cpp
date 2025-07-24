@@ -2,8 +2,6 @@
 
 #include "feature.hpp"
 
-#include "logger.hpp"
-
 #include <qcombobox.h>
 #include <qstackedlayout.h>
 

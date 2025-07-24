@@ -1,7 +1,6 @@
 #include "embedding_viewer.hpp"
 
 #include "embedding_creator.hpp"
-#include "logger.hpp"
 #include "renderdoc_app.h"
 #include "segmentation_manager.hpp"
 
@@ -376,7 +375,7 @@ void EmbeddingViewer::resizeEvent( QResizeEvent* event )
 void EmbeddingViewer::paintEvent( QPaintEvent* event )
 {
 	auto timer = Timer {};
-	Logger::info() << "Started rendering...";
+	Console::info( "Started rendering..." );
 
 	auto painter = QPainter { this };
 	painter.setRenderHint( QPainter::Antialiasing );
@@ -437,7 +436,7 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
 		painter.drawPolygon( _selection_polygon );
 	}
 
-	Logger::info() << "Finished rendering in " << timer.milliseconds() << " ms";
+	//Console::info( std::format( "Finished rendering in {} ms", timer.milliseconds() ) );
 }
 void EmbeddingViewer::wheelEvent( QWheelEvent* event )
 {
@@ -676,7 +675,7 @@ void EmbeddingViewer::import_embedding( const QString& filepath )
 			}
 			else
 			{
-				Logger::warning() << "Invalid line in embedding file: " << line;
+                Console::warning( std::format( "Invalid line in embedding file: {}", line.toStdString() ) );
 			}
 		}
 

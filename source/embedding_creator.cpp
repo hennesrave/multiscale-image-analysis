@@ -1,7 +1,6 @@
 #include "embedding_creator.hpp"
 
 #include "dataset.hpp"
-#include "logger.hpp"
 #include "python.hpp"
 #include "segment_selector.hpp"
 #include "segmentation.hpp"
@@ -324,7 +323,7 @@ except Exception as exception:
         }
         else
         {
-            Logger::error() << "Python error during embedding creation: " << error;
+            Console::error( std::format( "Python error during embedding creation: {}", error ) );
             QMessageBox::critical( nullptr, "Create Embedding...", "Failed to create embedding.", QMessageBox::Ok );
             this->reject();
         }
