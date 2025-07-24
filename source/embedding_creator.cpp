@@ -247,8 +247,8 @@ try:
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset... " )
         if normalization == "Z-Score":
-            filtered_dataset_mean       = np.mean( filtered_dataset, axis=0 )
-            filtered_dataset_std        = np.std( filtered_dataset, axis=0 )
+            filtered_dataset_mean       = np.mean( filtered_dataset )
+            filtered_dataset_std        = np.std( filtered_dataset )
             filtered_dataset            = ( filtered_dataset - filtered_dataset_mean ) / filtered_dataset_std
         elif normalization == "Min-Max":
             filtered_dataset_minimum   = np.min( filtered_dataset )

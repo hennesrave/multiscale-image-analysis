@@ -100,11 +100,11 @@ void Histogram::compute_counts( Array<uint32_t>& counts ) const
 
     if( auto feature = _feature.lock() )
     {
-        feature->values().request_value();
         _edges.request_value();
+        feature->values().request_value();
 
-        const auto [feature_values, feature_values_lock] = feature->values().await_value();
         const auto [edges, edges_lock] = _edges.await_value();
+        const auto [feature_values, feature_values_lock] = feature->values().await_value();
 
         for( const auto value : feature_values )
         {
@@ -235,11 +235,11 @@ void StackedHistogram::compute_counts( Array<Array<uint32_t>>& counts ) const
 
         if( const auto feature = _feature.lock() )
         {
-            feature->values().request_value();
             _edges.request_value();
+            feature->values().request_value();
 
-            const auto [feature_values, feature_values_lock] = feature->values().await_value();
             const auto [edges, edges_lock] = _edges.await_value();
+            const auto [feature_values, feature_values_lock] = feature->values().await_value();
 
             for( uint32_t element_index = 0; element_index < feature->element_count(); ++element_index )
             {

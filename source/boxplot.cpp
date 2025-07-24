@@ -88,9 +88,9 @@ void GroupedBoxplot::compute_statistics( Array<Statistics>& statistics ) const
         {
             auto element_filter_feature = ElementFilterFeature { feature, element_indices[segment_number] };
 
-            const auto extremes = element_filter_feature.extremes().value();
-            const auto moments = element_filter_feature.moments().value();
             const auto quantiles = element_filter_feature.quantiles().value();
+            const auto moments = element_filter_feature.moments().value();
+            const auto extremes = element_filter_feature.extremes().value();
 
             statistics[segment_number] = Statistics {
                 extremes.minimum,

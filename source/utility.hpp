@@ -11,11 +11,22 @@
 #include <mutex>
 #include <ranges>
 #include <shared_mutex>
+#include <sstream>
 #include <thread>
 
 #include <qcolor.h>
 #include <qstring.h>
 #include <qobject.h>
+
+template <> struct std::formatter<std::thread::id> : std::formatter<std::string>
+{
+    auto format( const std::thread::id& id, auto& ctx ) const
+    {
+        auto stream = std::ostringstream {};
+        stream << id;
+        return std::formatter<std::string>::format( stream.str(), ctx );
+    }
+};
 
 namespace utility
 {
@@ -585,7 +596,6 @@ public:
                     Console::info( std::format( "Promise finished computation: {}", this->objectName().toStdString() ) );
                 }
                 flags_lock.lock();
-                Console::info( std::format( "Promise flags: {}, {}, {}", _terminate, _invalidated, _finished ) );
 
                 if( _terminate )
                 {
@@ -614,10 +624,13 @@ public:
 
     std::pair<const value_type&, std::shared_lock<std::shared_mutex>> await_value() const
     {
-        Console::info( std::format( "Awaiting value for promise: {}", this->objectName().toStdString() ) );
         auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
         if( !_finished )
         {
+            Console::info( std::format(
+                "Awaiting promise {} on thread {}", this->objectName().toStdString(), _compute_thread.get_id()
+            ) );
+
             _execute = true;
             flags_lock.unlock();
             _flags_condition_variable.notify_one();
@@ -678,7 +691,6 @@ public:
 
     void invalidate()
     {
-        Console::info( std::format( "Invalidating promise: {}", this->objectName().toStdString() ) );
         {
             auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
             if( !_invalidated )
@@ -687,8 +699,11 @@ public:
                 _invalidated = true;
                 _execute = true;
 
+                Console::info( std::format(
+                    "Invalidating promise {} on thread {}", this->objectName().toStdString(), _compute_thread.get_id()
+                ) );
+
                 flags_lock.unlock();
-                Console::info( std::format( "Invalidated promise: {}", this->objectName().toStdString() ) );
                 emit invalidated();
             }
         }
