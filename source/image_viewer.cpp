@@ -63,14 +63,16 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     painter.fillRect( _image_rectangle, Qt::black );
 
     // Render image
-    if( auto colormap = _colormap.lock() )
+    if( const auto colormap = _colormap.lock() )
     {
-        const auto& colors = colormap->colors();
-        const auto dimensions = _dataset->spatial_metadata()->dimensions;
-        const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-        painter.setOpacity( _image_opacity );
-        painter.drawImage( _image_rectangle, image );
-        painter.setOpacity( 1.0 );
+        if( const auto& colors = colormap->colors(); colors.size() )
+        {
+            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+            painter.setOpacity( _image_opacity );
+            painter.drawImage( _image_rectangle, image );
+            painter.setOpacity( 1.0 );
+        }
     }
 
     // Render segmentation colors

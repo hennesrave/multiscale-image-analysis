@@ -10,19 +10,12 @@
 #include <ranges>
 #include <sstream>
 
+#define NOMINMAX
+#include <Windows.h>
+
 #include <qcolor.h>
 #include <qstring.h>
 #include <qobject.h>
-
-template <> struct std::formatter<std::thread::id> : std::formatter<std::string>
-{
-    auto format( const std::thread::id& id, auto& ctx ) const
-    {
-        auto stream = std::ostringstream {};
-        stream << id;
-        return std::formatter<std::string>::format( stream.str(), ctx );
-    }
-};
 
 namespace utility
 {
@@ -42,6 +35,19 @@ namespace utility
         iterate_parallel( IndexType { 0 }, end, std::forward<decltype( callable )>( callable ) );
     }
 }
+
+// ----- Formatters ----- //
+
+template <> struct std::formatter<std::wstring> : std::formatter<std::string>
+{
+    auto format( const std::wstring& wstring, auto& context ) const
+    {
+        const auto required_size = WideCharToMultiByte( CP_UTF8, 0, wstring.data(), (int) wstring.size(), nullptr, 0, nullptr, nullptr );
+        auto string = std::string( required_size, 0 );
+        WideCharToMultiByte( CP_UTF8, 0, wstring.data(), (int) wstring.size(), &string[0], required_size, nullptr, nullptr );
+        return std::formatter<std::string>::format( string, context );
+    }
+};
 
 // ----- Timer ----- //
 

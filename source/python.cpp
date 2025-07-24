@@ -1,6 +1,6 @@
 #include "python.hpp"
 
-#include "console.hpp"
+#include "utility.hpp"
 
 #include <filesystem>
 
@@ -24,12 +24,12 @@ namespace pybind11
     {
         if( !_interpreter )
         {
-            Console::info( std::format( L"Python home: {}", interpreter::python_home ) );
+            Console::info( std::format( "Python home: {}", interpreter::python_home ) );
 
             const auto libraries_directory = interpreter::python_home + L"/Lib";
             if( !std::filesystem::is_directory( libraries_directory ) )
             {
-                Console::info( std::format( L"Python libraries directory does not exist: {}", libraries_directory ) );
+                Console::info( std::format( "Python libraries directory does not exist: {}", libraries_directory ) );
                 Console::info( "Creating python libraries directory..." );
 
                 try

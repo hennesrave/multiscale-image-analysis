@@ -242,7 +242,7 @@ Colormap1D::Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template ) : 
 
 uint32_t Colormap1D::element_count() const
 {
-    if( auto feature = _feature.lock() )
+    if( const auto feature = _feature.lock() )
     {
         return feature->element_count();
     }
@@ -290,8 +290,8 @@ void Colormap1D::update_feature( QSharedPointer<Feature> feature )
         if( _feature = feature )
         {
             QObject::connect( feature.get(), &Feature::values_changed, &_colors, &ComputedObject::invalidate );
-            QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
             QObject::connect( feature.get(), &Feature::extremes_changed, this, &Colormap1D::on_feature_extremes_changed );
+            QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
             this->on_feature_extremes_changed();
         }
 
@@ -342,7 +342,7 @@ Array<vec4<float>> Colormap1D::compute_colors() const
 {
     auto colors = Array<vec4<float>> { this->element_count(), vec4<float>{ 0.0f, 0.0f, 0.0f, 1.0f } };
 
-    if( auto feature = _feature.lock(); feature )
+    if( const auto feature = _feature.lock() )
     {
         const auto& feature_values = feature->values();
 

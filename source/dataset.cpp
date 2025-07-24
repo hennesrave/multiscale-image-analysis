@@ -140,7 +140,7 @@ void DatasetChannelsFeature::update_identifier()
         }
         else if( _channel_range.lower < _channel_range.upper )
         {
-            _identifier.update_automatic_value( "Channels " + dataset->channel_identifier( _channel_range.lower ) + " to " + dataset->channel_identifier( _channel_range.upper ) );
+            _identifier.update_automatic_value( "Channel " + dataset->channel_identifier( _channel_range.lower ) + " to " + dataset->channel_identifier( _channel_range.upper ) );
         }
     }
     else

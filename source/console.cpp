@@ -39,21 +39,3 @@ void Console::critical( const std::string& message, const std::source_location l
     logger->critical( "[{}, line {}] {}", filename, location.line(), message );
     std::terminate();
 }
-
-void Console::info( const std::wstring& message, const std::source_location location )
-{
-    //spdlog::stdout_color_mt<wchar_t>( "wlogger" )->info( "[{} | {}, line = {}] {}", Console::timestamp_wstring(), location.file_name(), location.line(), message );
-}
-void Console::warning( const std::wstring& message, const std::source_location location )
-{
-    //spdlog::stdout_color_mt<wchar_t>( "wlogger" )->warn( "[{} | {}, line = {}] {}", Console::timestamp_wstring(), location.file_name(), location.line(), message );
-}
-void Console::error( const std::wstring& message, const std::source_location location )
-{
-    //spdlog::stdout_color_mt<wchar_t>( "wlogger" )->error( "[{} | {}, line = {}] {}", Console::timestamp_wstring(), location.file_name(), location.line(), message );
-}
-void Console::critical( const std::wstring& message, const std::source_location location )
-{
-    //spdlog::stdout_color_mt<wchar_t>( "wlogger" )->critical( "[{} | {}, line = {}] {}", Console::timestamp_wstring(), location.file_name(), location.line(), message );
-    //std::exit( 1 );
-}

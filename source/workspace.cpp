@@ -24,7 +24,7 @@ Workspace::Workspace( Database& database ) : _database { database }
     _histogram_viewer = new HistogramViewer { database };
     _image_viewer = new ImageViewer { database };
     _spectrum_viewer = new SpectrumViewer { database };
-    Console::info( "Finished creating widgets..." );
+    Console::info( "Finished creating widgets!" );
 
     Console::info( "Initializing workspace layout..." );
     auto image_viewer_container = new QWidget {};
@@ -74,7 +74,7 @@ Workspace::Workspace( Database& database ) : _database { database }
             }
         }
     } );
-    Console::info( "Finished initialzing callbacks..." );
+    Console::info( "Finished initialzing callbacks!" );
 
     const auto dataset = _database.dataset();
     emit dataset->intensities_changed();
@@ -82,7 +82,7 @@ Workspace::Workspace( Database& database ) : _database { database }
     const auto& statistics = dataset->statistics();
     const auto channel_index = static_cast<uint32_t>( std::max_element( statistics.channel_averages.begin(), statistics.channel_averages.end() ) - statistics.channel_averages.begin() );
 
-    Console::info( std::format( "Dataset has {} channels, using channel index {} for default feature", dataset->channel_count(), channel_index ) );
+    Console::info( std::format( "Dataset has {} channels, using channel index {} for default feature.", dataset->channel_count(), channel_index ) );
     const auto feature = QSharedPointer<DatasetChannelsFeature> { new DatasetChannelsFeature {
         dataset,
         Range<uint32_t> { channel_index, channel_index },
