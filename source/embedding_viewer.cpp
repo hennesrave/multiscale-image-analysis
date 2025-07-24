@@ -362,7 +362,7 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
 
 	const auto segmentation = _database.segmentation();
 	QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::segmentation_changed );
-	segmentation->element_colors().subscribe( this, [this] { this->segmentation_changed(); } );
+	QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::segmentation_changed );
 
 	QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
@@ -407,7 +407,7 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
 			const auto position = _point_positions[std::distance( _point_indices.begin(), iterator )];
 			const auto screen = this->world_to_screen( QPointF { position.x, position.y } );
 
-			const auto segment_number = _database.segmentation()->value( *element_index );
+			const auto segment_number = _database.segmentation()->segment_number( *element_index );
 			const auto segment = _database.segmentation()->segment( segment_number );
 			const auto color = segment_number == 0 ? QColor { 230, 230, 230, 255 } : segment->color().qcolor();
 
@@ -637,7 +637,7 @@ void EmbeddingViewer::segmentation_changed()
 		segment_colors[segment_number] = segmentation->segment( segment_number )->color();
 	}
 
-	_renderer->update_segmentation( _database.segmentation()->values(), segment_colors );
+	_renderer->update_segmentation( _database.segmentation()->segment_numbers(), segment_colors );
 	_scatterplot_image_valid = false;
 	this->update();
 }

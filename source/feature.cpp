@@ -2,19 +2,21 @@
 
 // ----- Feature ----- //
 
-Feature::Feature() : QObject {},
-_identifier { "Feature", std::nullopt },
-_values { "Feature::values", [this] ( Array<double>& values ) { this->compute_values( values ); } },
-_extremes { "Feature::extremes", [this] ( Extremes& extremes ) { this->compute_extremes( extremes ); } },
-_moments { "Feature::moments", [this] ( Moments& moments ) { this->compute_moments( moments ); } },
-_quantiles { "Feature::quantiles", [this] ( Quantiles& quantiles ) { this->compute_quantiles( quantiles ); } },
-_sorted_indices { "Feature::sorted_indices", [this] ( Array<uint32_t>& sorted_indices ) { this->compute_sorted_indices( sorted_indices ); } }
+Feature::Feature()
+    : QObject {}
+    , _identifier { "Feature", std::nullopt }
+    , _values { std::bind( &Feature::compute_values, this ) }
+    , _extremes { std::bind( &Feature::compute_extremes, this ) }
+    , _moments { std::bind( &Feature::compute_moments, this ) }
+    , _quantiles { std::bind( &Feature::compute_quantiles, this ) }
+    , _sorted_indices { std::bind( &Feature::compute_sorted_indices, this ) }
 {
     QObject::connect( &_identifier, &Override<QString>::value_changed, this, [this] { emit identifier_changed( _identifier.value() ); } );
-    QObject::connect( &_values, &PromiseObject::invalidated, &_extremes, &Promise<Extremes>::invalidate );
-    QObject::connect( &_values, &PromiseObject::invalidated, &_moments, &Promise<Moments>::invalidate );
-    QObject::connect( &_values, &PromiseObject::invalidated, &_quantiles, &Promise<Quantiles>::invalidate );
-    QObject::connect( &_values, &PromiseObject::invalidated, &_sorted_indices, &Promise<Array<uint32_t>>::invalidate );
+    QObject::connect( &_values, &ComputedObject::changed, this, &Feature::values_changed );
+    QObject::connect( &_extremes, &ComputedObject::changed, this, &Feature::extremes_changed );
+    QObject::connect( &_moments, &ComputedObject::changed, this, &Feature::moments_changed );
+    QObject::connect( &_quantiles, &ComputedObject::changed, this, &Feature::quantiles_changed );
+    QObject::connect( &_sorted_indices, &ComputedObject::changed, this, &Feature::sorted_indices_changed );
 }
 
 const QString& Feature::identifier() const noexcept
@@ -26,65 +28,60 @@ void Feature::update_identifier( const QString& identifier )
     _identifier.update_override_value( identifier );
 }
 
-const Promise<Array<double>>& Feature::values() const noexcept
+const Array<double>& Feature::values() const noexcept
 {
-    return _values;
+    return *_values;
 }
-const Promise<Feature::Extremes>& Feature::extremes() const noexcept
+const Feature::Extremes& Feature::extremes() const noexcept
 {
-    return _extremes;
+    return *_extremes;
 }
-const Promise<Feature::Moments>& Feature::moments() const noexcept
+const Feature::Moments& Feature::moments() const noexcept
 {
-    return _moments;
+    return *_moments;
 }
-const Promise<Feature::Quantiles>& Feature::quantiles() const noexcept
+const Feature::Quantiles& Feature::quantiles() const noexcept
 {
-    return _quantiles;
+    return *_quantiles;
 }
-const Promise<Array<uint32_t>>& Feature::sorted_indices() const noexcept
+const Array<uint32_t>& Feature::sorted_indices() const noexcept
 {
-    return _sorted_indices;
+    return *_sorted_indices;
 }
 
-void Feature::compute_extremes( Extremes& extremes ) const
+Feature::Extremes Feature::compute_extremes() const
 {
-    if( this->element_count() == 0 )
-    {
-        extremes.minimum = 0.0;
-        extremes.maximum = 0.0;
-    }
-    else
+    auto extremes = Feature::Extremes {
+        .minimum = 0.0,
+        .maximum = 0.0
+    };
+
+    if( this->element_count() > 0 )
     {
         extremes.minimum = std::numeric_limits<double>::max();
         extremes.maximum = std::numeric_limits<double>::lowest();
 
-        const auto [values, _] = _values.await_value();
-        for( const auto& value : values )
+        for( const auto value : this->values() )
         {
             extremes.minimum = std::min( extremes.minimum, static_cast<double>( value ) );
             extremes.maximum = std::max( extremes.maximum, static_cast<double>( value ) );
         }
     }
+
+    return extremes;
 }
-void Feature::compute_moments( Moments& moments ) const
+Feature::Moments Feature::compute_moments() const
 {
-    if( this->element_count() == 0 )
+    auto moments = Feature::Moments {
+        .average = 0.0,
+        .standard_deviation = 0.0
+    };
+
+    if( this->element_count() > 0 )
     {
-        moments.average = 0.0;
-        moments.standard_deviation = 0.0;
-    }
-    else
-    {
-        const auto [values, _] = _values.await_value();
-        moments.average = 0.0;
-        moments.standard_deviation = 0.0;
         auto counter = uint32_t { 0 };
-
-        for( const auto& typed_value : values )
+        for( const auto value : this->values() )
         {
-            const auto value = static_cast<double>( typed_value );
-
             ++counter;
             const auto delta = value - moments.average;
             moments.average += delta / counter;
@@ -94,28 +91,23 @@ void Feature::compute_moments( Moments& moments ) const
         }
         moments.standard_deviation = std::sqrt( moments.standard_deviation / counter );
     }
+
+    return moments;
 }
-void Feature::compute_quantiles( Quantiles& quantiles ) const
+Feature::Quantiles Feature::compute_quantiles() const
 {
-    if( this->element_count() == 0 )
-    {
-        quantiles.lower_quartile = 0.0;
-        quantiles.median = 0.0;
-        quantiles.upper_quartile = 0.0;
-    }
-    else
-    {
-        _values.request_value();
-        _sorted_indices.request_value();
+    auto quantiles = Feature::Quantiles {
+        .lower_quartile = 0.0,
+        .median = 0.0,
+        .upper_quartile = 0.0
+    };
 
-        const auto [values, values_lock] = _values.await_value();
-        const auto [sorted_indices, sorted_indices_lock] = _sorted_indices.await_value();
+    if( this->element_count() > 0 )
+    {
+        const auto& values = this->values();
+        const auto& sorted_indices = this->sorted_indices();
 
-        const auto retrieve_value = [&values, &sorted_indices] ( uint32_t index ) -> double
-        {
-            return static_cast<double>( values[sorted_indices[index]] );
-        };
-        const auto compute_quantile = [&values, &sorted_indices, &retrieve_value] ( double quantile ) -> double
+        const auto compute_quantile = [&values, &sorted_indices] ( double quantile ) -> double
         {
             const auto position = ( values.size() - 1 ) * quantile;
             const auto lower_index = static_cast<uint32_t>( std::floor( position ) );
@@ -124,12 +116,12 @@ void Feature::compute_quantiles( Quantiles& quantiles ) const
 
             if( lower_index == upper_index )
             {
-                return retrieve_value( lower_index );
+                return values[sorted_indices[lower_index]];
             }
             else
             {
-                const auto lower_value = retrieve_value( lower_index );
-                const auto upper_value = retrieve_value( upper_index );
+                const auto lower_value = values[sorted_indices[lower_index]];
+                const auto upper_value = values[sorted_indices[upper_index]];
                 return lower_value + fraction * ( upper_value - lower_value );
             }
         };
@@ -138,20 +130,21 @@ void Feature::compute_quantiles( Quantiles& quantiles ) const
         quantiles.median = compute_quantile( 0.5 );
         quantiles.upper_quartile = compute_quantile( 0.75 );
     }
+
+    return quantiles;
 }
-void Feature::compute_sorted_indices( Array<uint32_t>& sorted_indices ) const
+Array<uint32_t> Feature::compute_sorted_indices() const
 {
-    if( sorted_indices.size() != this->element_count() )
-    {
-        sorted_indices = Array<uint32_t>::allocate( this->element_count() );
-    }
+    auto sorted_indices = Array<uint32_t>::allocate( this->element_count() );
     std::iota( sorted_indices.begin(), sorted_indices.end(), 0 );
 
-    const auto [values, _] = _values.await_value();
-    std::sort( std::execution::par, sorted_indices.begin(), sorted_indices.end(), [&values] ( uint32_t a, uint32_t b )
+    const auto& values = this->values();
+    std::sort( std::execution::par, sorted_indices.begin(), sorted_indices.end(), [&] ( uint32_t a, uint32_t b )
     {
         return values[a] < values[b];
     } );
+
+    return sorted_indices;
 }
 
 // ----- ElementFilterFeature ----- //
@@ -159,7 +152,6 @@ void Feature::compute_sorted_indices( Array<uint32_t>& sorted_indices ) const
 ElementFilterFeature::ElementFilterFeature( QSharedPointer<const Feature> feature, std::vector<uint32_t> element_indices )
     : Feature {}, _feature { feature }, _element_indices { std::move( element_indices ) }
 {
-    _values.setObjectName( "ElementFilterFeature::values" );
 }
 
 uint32_t ElementFilterFeature::element_count() const noexcept
@@ -167,24 +159,18 @@ uint32_t ElementFilterFeature::element_count() const noexcept
     return static_cast<uint32_t>( _element_indices.size() );
 }
 
-void ElementFilterFeature::compute_values( Array<double>& values ) const
+Array<double> ElementFilterFeature::compute_values() const
 {
-    Console::info( "ElementFilterFeature::compute_values" );
-
-    if( values.size() != this->element_count() )
-    {
-        values = Array<double> { this->element_count(), 0.0 };
-    }
+    auto values = Array<double> { this->element_count(), 0.0 };
 
     if( const auto feature = _feature.lock() )
     {
-        Console::info( "ElementFilterFeature::compute_values acquiring feature values" );
-        const auto [feature_values, _] = feature->values().await_value();
-        Console::info( "ElementFilterFeature::compute_values acquired feature values" );
-
-        utility::parallel_for( 0u, this->element_count(), [&] ( uint32_t element_index )
+        const auto& feature_values = feature->values();
+        utility::iterate_parallel( 0u, this->element_count(), [&] ( uint32_t element_index )
         {
             values[element_index] = feature_values[_element_indices[element_index]];
         } );
     }
+
+    return values;
 }

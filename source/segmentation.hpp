@@ -76,11 +76,11 @@ public:
 
     uint32_t element_count() const noexcept;
 
-    const Array<uint32_t>& values() const noexcept;
-    uint32_t value( uint32_t element_index ) const;
-
     const Array<uint32_t>& segment_numbers() const noexcept;
     uint32_t segment_number( uint32_t element_index ) const;
+
+    const Array<vec4<float>>& element_colors() const noexcept;
+    const Array<std::vector<uint32_t>>& element_indices() const noexcept;
 
     uint32_t segment_count() const noexcept;
     const QSharedPointer<Segment>& segment( uint32_t segment_number ) const;
@@ -93,27 +93,29 @@ public:
 
     Editor editor();
 
-    const Promise<Array<vec4<float>>>& element_colors() const noexcept;
-    const Promise<Array<std::vector<uint32_t>>>& element_indices() const noexcept;
-
 signals:
-    void values_changed( const Array<uint32_t>& values ) const;
+    void segment_numbers_changed() const;
+    void element_colors_changed() const;
+    void element_indices_changed() const;
+
     void segment_appended( const QSharedPointer<Segment>& segment ) const;
     void segment_removed( const QSharedPointer<Segment>& segment ) const;
     void segment_count_changed( uint32_t segment_count ) const;
+
     void segment_identifier_changed() const;
     void segment_color_changed() const;
 
 private:
-    void compute_element_colors( Array<vec4<float>>& element_colors ) const;
-    void compute_element_indices( Array<std::vector<uint32_t>>& element_indices ) const;
+    Array<vec4<float>> compute_element_colors() const;
+    Array<std::vector<uint32_t>> compute_element_indices() const;
 
-    Array<uint32_t> _values;
+    Array<uint32_t> _segment_numbers;
+    Computed<Array<vec4<float>>> _element_colors;
+    Computed<Array<std::vector<uint32_t>>> _element_indices;
+
     std::vector<QSharedPointer<Segment>> _segments;
     uint32_t _current_preset_color_index = 0;
 
-    Promise<Array<vec4<float>>> _element_colors;
-    Promise<Array<std::vector<uint32_t>>> _element_indices;
 
     static inline std::array<vec4<float>, 9> _preset_colors {
         vec4<float> { 128, 177, 211, 255 } / 255.0f,

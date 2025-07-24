@@ -32,17 +32,18 @@ public:
     QSharedPointer<const Feature> feature() const;
     void update_feature( QSharedPointer<const Feature> feature );
 
-    const Promise<Array<Statistics>>& statistics() const;
+    const Array<Statistics>& statistics() const;
 
 signals:
     void segmentation_changed( QSharedPointer<const Segmentation> segmentation );
     void feature_changed( QSharedPointer<const Feature> feature );
+    void statistics_changed();
 
 private:
-    void compute_statistics( Array<Statistics>& statistics ) const;
+    Array<Statistics> compute_statistics() const;
 
     QWeakPointer<const Segmentation> _segmentation;
     QWeakPointer<const Feature> _feature;
 
-    Promise<Array<Statistics>> _statistics;
+    Computed<Array<Statistics>> _statistics;
 };

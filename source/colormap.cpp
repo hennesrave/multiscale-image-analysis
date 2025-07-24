@@ -197,13 +197,13 @@ const std::vector<std::pair<const char*, const ColormapTemplate&>> ColormapTempl
 
 Colormap::Colormap()
 {
-    _colors.initialize( "Colormap::colors", [this] (auto& colors) { this->compute_colors(colors); });
-    QObject::connect( this, &Colormap::colors_changed, &_colors, &Promise<Array<vec4<float>>>::invalidate );
+    _colors.initialize( std::bind( &Colormap::compute_colors, this ) );
+    QObject::connect( &_colors, &ComputedObject::changed, this, &Colormap::colors_changed );
 }
 
-const Promise<Array<vec4<float>>>& Colormap::colors() const noexcept
+const Array<vec4<float>>& Colormap::colors() const
 {
-    return _colors;
+    return *_colors;
 }
 
 // ----- Colormap1D ----- //
@@ -215,7 +215,7 @@ Colormap1D::Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template ) : 
         Console::critical( "Invalid colormap template provided." );
     }
 
-    QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, this, &Colormap1D::colors_changed );
+    QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, &_colors, &ComputedObject::invalidate );
     QObject::connect( &_lower, &Override<double>::value_changed, this, [this]
     {
         const auto lower = _lower.value();
@@ -224,7 +224,7 @@ Colormap1D::Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template ) : 
             if( _upper.automatic_value() > lower ) _upper.update_override_value( std::nullopt );
             else _upper.update_override_value( lower + 1.0 );
         }
-        emit colors_changed();
+        _colors.invalidate();
     } );
     QObject::connect( &_upper, &Override<double>::value_changed, this, [this]
     {
@@ -234,11 +234,19 @@ Colormap1D::Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template ) : 
             if( _lower.automatic_value() < upper ) _lower.update_override_value( std::nullopt );
             else _lower.update_override_value( upper - 1.0 );
         }
-        emit colors_changed();
+        _colors.invalidate();
     } );
-    QObject::connect( this, &Colormap1D::template_changed, this, &Colormap::colors_changed );
-    QObject::connect( this, &Colormap1D::feature_changed, this, &Colormap::colors_changed );
-    QObject::connect( this, &Colormap::colors_changed, &_colors, &Promise<Array<vec4<float>>>::invalidate );
+    QObject::connect( this, &Colormap1D::template_changed, &_colors, &ComputedObject::invalidate );
+    QObject::connect( this, &Colormap1D::feature_changed, &_colors, &ComputedObject::invalidate );
+}
+
+uint32_t Colormap1D::element_count() const
+{
+    if( auto feature = _feature.lock() )
+    {
+        return feature->element_count();
+    }
+    return 0;
 }
 
 const std::unique_ptr<ColormapTemplate>& Colormap1D::colormap_template() const noexcept
@@ -276,21 +284,20 @@ void Colormap1D::update_feature( QSharedPointer<Feature> feature )
     {
         if( auto feature = _feature.lock() )
         {
-            feature->values().unsubscribe( this );
-            feature->extremes().unsubscribe( this );
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
         }
 
         if( _feature = feature )
         {
-            feature->values().subscribe( this, [this] { emit colors_changed(); } );
-            feature->extremes().subscribe( this, [this]
+            QObject::connect( feature.get(), &Feature::values_changed, &_colors, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &Feature::extremes_changed, this, [this]
             {
                 if( auto feature = _feature.lock() )
                 {
                     const auto lower_override = _lower.override_value();
                     const auto upper_override = _upper.override_value();
 
-                    const auto [extremes, _] = feature->extremes().await_value();
+                    const auto& extremes = feature->extremes();
                     _lower.update_automatic_value( extremes.minimum );
                     _upper.update_automatic_value( extremes.maximum );
 
@@ -298,6 +305,7 @@ void Colormap1D::update_feature( QSharedPointer<Feature> feature )
                     _upper.update_override_value( upper_override );
                 }
             } );
+            QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
         }
 
         emit feature_changed( _feature );
@@ -322,28 +330,20 @@ Override<double>& Colormap1D::upper() noexcept
     return _upper;
 }
 
-uint32_t Colormap1D::element_count() const
+Array<vec4<float>> Colormap1D::compute_colors() const
 {
-    if( auto feature = _feature.lock() )
-    {
-        return feature->element_count();
-    }
-    return 0;
-}
-void Colormap1D::compute_colors( Array<vec4<float>>& colors ) const
-{
-    colors = Array<vec4<float>> { this->element_count(), vec4<float>{ 0.0f, 0.0f, 0.0f, 1.0f } };
+    auto colors = Array<vec4<float>> { this->element_count(), vec4<float>{ 0.0f, 0.0f, 0.0f, 1.0f } };
 
     if( auto feature = _feature.lock(); feature )
     {
-        const auto [feature_values, _] = feature->values().await_value();
+        const auto& feature_values = feature->values();
 
         const auto lower = _lower.value();
         const auto upper = _upper.value();
 
         if( lower == upper )
         {
-            utility::parallel_for( 0u, this->element_count(), [this, &colors] ( uint32_t element_index )
+            utility::iterate_parallel( this->element_count(), [this, &colors] ( uint32_t element_index )
             {
                 colors[element_index] = _colormap_template->color( 0.5 );
             } );
@@ -351,7 +351,7 @@ void Colormap1D::compute_colors( Array<vec4<float>>& colors ) const
         else
         {
             const auto range = upper - lower;
-            utility::parallel_for( 0u, this->element_count(), [this, &colors, &feature_values, lower, range] ( uint32_t element_index )
+            utility::iterate_parallel( this->element_count(), [this, &colors, &feature_values, lower, range] ( uint32_t element_index )
             {
                 const auto value = feature_values[element_index];
                 const auto normalized = ( value - lower ) / range;
@@ -359,15 +359,26 @@ void Colormap1D::compute_colors( Array<vec4<float>>& colors ) const
             } );
         }
     }
+
+    return colors;
 }
 
 // ----- ColormapRGB ----- //
 
 ColormapRGB::ColormapRGB()
 {
-    _colormap_r.colors().subscribe( this, [this] { _colors.invalidate(); } );
-    _colormap_g.colors().subscribe( this, [this] { _colors.invalidate(); } );
-    _colormap_b.colors().subscribe( this, [this] { _colors.invalidate(); } );
+    QObject::connect( &_colormap_r, &Colormap::colors_changed, &_colors, &ComputedObject::invalidate );
+    QObject::connect( &_colormap_g, &Colormap::colors_changed, &_colors, &ComputedObject::invalidate );
+    QObject::connect( &_colormap_b, &Colormap::colors_changed, &_colors, &ComputedObject::invalidate );
+}
+
+uint32_t ColormapRGB::element_count() const
+{
+    if( _colormap_r.element_count() == _colormap_g.element_count() && _colormap_r.element_count() == _colormap_b.element_count() )
+    {
+        return _colormap_r.element_count();
+    }
+    return 0;
 }
 
 const Colormap1D& ColormapRGB::colormap_r() const noexcept
@@ -383,31 +394,19 @@ const Colormap1D& ColormapRGB::colormap_b() const noexcept
     return _colormap_b;
 }
 
-uint32_t ColormapRGB::element_count() const
+Array<vec4<float>> ColormapRGB::compute_colors() const
 {
-    if( _colormap_r.element_count() == _colormap_g.element_count() && _colormap_r.element_count() == _colormap_b.element_count() )
+    const auto& colors_r = _colormap_r.colors();
+    const auto& colors_g = _colormap_g.colors();
+    const auto& colors_b = _colormap_b.colors();
+
+    auto colors = Array<vec4<float>>::allocate( this->element_count() );
+    utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
     {
-        return _colormap_r.element_count();
-    }
-    return 0;
-}
-
-void ColormapRGB::compute_colors( Array<vec4<float>>& colors ) const
-{
-    _colormap_r.colors().request_value();
-    _colormap_g.colors().request_value();
-    _colormap_b.colors().request_value();
-
-    const auto [colormap_r, lock_a] = _colormap_r.colors().await_value();
-    const auto [colormap_g, lock_b] = _colormap_g.colors().await_value();
-    const auto [colormap_b, lock_c] = _colormap_b.colors().await_value();
-
-    colors = Array<vec4<float>> { this->element_count(), vec4<float>{ 0.0f, 0.0f, 0.0f, 0.0f } };
-    for( uint32_t element_index = 0; element_index < this->element_count(); ++element_index )
-    {
-        const auto r = colormap_r[element_index].r;
-        const auto g = colormap_g[element_index].g;
-        const auto b = colormap_b[element_index].b;
-        colors[element_index] = vec4<float> { r, g, b, std::max( { r, g, b } ) };
-    }
+        const auto r = colors_r.value( element_index ).r;
+        const auto g = colors_g.value( element_index ).g;
+        const auto b = colors_b.value( element_index ).b;
+        colors[element_index] = vec4<float> { r, g, b, 1.0f };
+    } );
+    return colors;
 }

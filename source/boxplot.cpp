@@ -7,9 +7,9 @@
 
 GroupedBoxplot::GroupedBoxplot() : QObject {}
 {
-    _statistics.initialize( "GroupedBoxplot::statistics", [this] ( Array<Statistics>& statistics ) { compute_statistics( statistics ); } );
-    QObject::connect( this, &GroupedBoxplot::segmentation_changed, &_statistics, &Promise<Array<Statistics>>::invalidate );
-    QObject::connect( this, &GroupedBoxplot::feature_changed, &_statistics, &Promise<Array<Statistics>>::invalidate );
+    _statistics.initialize( std::bind( &GroupedBoxplot::compute_statistics, this ) );
+    QObject::connect( this, &GroupedBoxplot::segmentation_changed, &_statistics, &ComputedObject::invalidate );
+    QObject::connect( this, &GroupedBoxplot::feature_changed, &_statistics, &ComputedObject::invalidate );
 
 }
 
@@ -24,12 +24,11 @@ void GroupedBoxplot::update_segmentation( QSharedPointer<const Segmentation> seg
         if( auto segmentation = _segmentation.lock() )
         {
             QObject::disconnect( segmentation.get(), nullptr, this, nullptr );
-            segmentation->element_indices().unsubscribe( this );
         }
         if( _segmentation = segmentation )
         {
-            QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, &_statistics, &Promise<Array<Statistics>>::invalidate );
-            segmentation->element_indices().subscribe( this, [this] { _statistics.invalidate(); } );
+            QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, &_statistics, &ComputedObject::invalidate );
+            QObject::connect( segmentation.get(), &Segmentation::element_indices_changed, &_statistics, &ComputedObject::invalidate );
         }
         emit segmentation_changed( segmentation );
     }
@@ -45,52 +44,42 @@ void GroupedBoxplot::update_feature( QSharedPointer<const Feature> feature )
     {
         if( auto feature = _feature.lock() )
         {
-            feature->values().unsubscribe( this );
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
         }
 
         if( _feature = feature )
         {
-            feature->values().subscribe( this, [this]
-            {
-                _statistics.invalidate();
-            } );
-            QObject::connect( feature.get(), &QObject::destroyed, this, [this]
-            {
-                _statistics.invalidate();
-            } );
+            QObject::connect( feature.get(), &Feature::values_changed, &_statistics, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &QObject::destroyed, &_statistics, &ComputedObject::invalidate );
         }
 
         emit feature_changed( feature );
     }
 }
 
-const Promise<Array<GroupedBoxplot::Statistics>>& GroupedBoxplot::statistics() const
+const Array<GroupedBoxplot::Statistics>& GroupedBoxplot::statistics() const
 {
-    return _statistics;
+    return *_statistics;
 }
 
-void GroupedBoxplot::compute_statistics( Array<Statistics>& statistics ) const
+Array<GroupedBoxplot::Statistics> GroupedBoxplot::compute_statistics() const
 {
+    auto statistics = Array<Statistics> {};
+
     const auto segmentation = _segmentation.lock();
     const auto feature = _feature.lock();
 
     if( segmentation && feature )
     {
-        statistics = Array<Statistics>::allocate( segmentation->segment_count() );
+        statistics = Array<Statistics> { segmentation->segment_count(), Statistics {} };
 
-        feature->values().request_value();
-        feature->sorted_indices().request_value();
-        segmentation->element_indices().request_value();
-
-        const auto [element_indices, element_indices_lock] = segmentation->element_indices().await_value();
-
+        const auto& element_indices = segmentation->element_indices();
         for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
         {
             auto element_filter_feature = ElementFilterFeature { feature, element_indices[segment_number] };
-
-            const auto quantiles = element_filter_feature.quantiles().value();
-            const auto moments = element_filter_feature.moments().value();
-            const auto extremes = element_filter_feature.extremes().value();
+            const auto& extremes = element_filter_feature.extremes();
+            const auto& moments = element_filter_feature.moments();
+            const auto& quantiles = element_filter_feature.quantiles();
 
             statistics[segment_number] = Statistics {
                 extremes.minimum,
@@ -103,8 +92,6 @@ void GroupedBoxplot::compute_statistics( Array<Statistics>& statistics ) const
             };
         }
     }
-    else
-    {
-        statistics.clear();
-    }
+
+    return statistics;
 }

@@ -20,7 +20,7 @@ BoxplotViewer::BoxplotViewer( Database& database ) : _database { database }
     this->setMouseTracking( true );
 
     _boxplot.update_segmentation( _database.segmentation() );
-    _boxplot.statistics().subscribe( this, [this] { this->update(); } );
+    QObject::connect( &_boxplot, &GroupedBoxplot::statistics_changed, this, qOverload<>( &QWidget::update ) );
 
     const auto update_xaxis = [this]
     {
@@ -49,22 +49,19 @@ void BoxplotViewer::update_feature( QSharedPointer<Feature> feature )
     {
         if( auto feature = _feature.lock() )
         {
-            feature->extremes().unsubscribe( this );
+            QObject::disconnect( feature.get(), &Feature::values_changed, this, nullptr );
         }
 
         if( _feature = feature )
         {
-            feature->extremes().subscribe( this, [this]
+            QObject::connect( feature.get(), &Feature::values_changed, this, [this]
             {
                 if( auto feature = _feature.lock() )
                 {
-                    if( const auto [extremes, _] = feature->extremes().request_value(); extremes )
-                    {
-                        const auto [minimum, maximum] = *extremes;
-                        const auto range = maximum - minimum;
-                        this->update_yaxis_bounds( { minimum - 0.01 * range, maximum + 0.01 * range } );
-                        this->update_yaxis_domain( { minimum - 0.01 * range, maximum + 0.01 * range } );
-                    }
+                    const auto& extremes = feature->extremes();
+                    const auto range = extremes.maximum - extremes.minimum;
+                    this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+                    this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
                 }
                 else
                 {
@@ -155,36 +152,31 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
 
     if( auto feature = _feature.lock() )
     {
-        const auto [extremes, extremes_lock] = feature->extremes().request_value();
-        const auto [moments, moments_lock] = feature->moments().request_value();
-        const auto [quantiles, quantiles_lock] = feature->quantiles().request_value();
+        const auto& extremes = feature->extremes();
+        const auto& moments = feature->moments();
+        const auto& quantiles = feature->quantiles();
 
-        if( extremes && moments && quantiles )
-        {
-            render_boxplot(
-                0.5, config::palette[600],
-                extremes->minimum, extremes->maximum,
-                moments->average, moments->standard_deviation,
-                quantiles->lower_quartile, quantiles->upper_quartile, quantiles->median
-            );
-        }
+        render_boxplot(
+            0.5, config::palette[600],
+            extremes.minimum, extremes.maximum,
+            moments.average, moments.standard_deviation,
+            quantiles.lower_quartile, quantiles.upper_quartile, quantiles.median
+        );
     }
 
-    if( const auto [segmentation_statistics, _] = _boxplot.statistics().request_value(); segmentation_statistics )
+    const auto& segmentation_statistics = _boxplot.statistics();
+    for( uint32_t segment_number = 1; segment_number < segmentation_statistics.size(); ++segment_number )
     {
-        for( uint32_t segment_number = 1; segment_number < segmentation_statistics->size(); ++segment_number )
+        const auto segment = segmentation->segment( segment_number );
+        if( segment->element_count() > 0 )
         {
-            const auto segment = segmentation->segment( segment_number );
-            if( segment->element_count() > 0 )
-            {
-                const auto& statistics = segmentation_statistics->value( segment_number );
-                render_boxplot(
-                    segment_number + 0.5, segment->color().qcolor(),
-                    statistics.minimum, statistics.maximum,
-                    statistics.average, statistics.standard_deviation,
-                    statistics.lower_quartile, statistics.upper_quartile, statistics.median
-                );
-            }
+            const auto& statistics = segmentation_statistics[segment_number];
+            render_boxplot(
+                segment_number + 0.5, segment->color().qcolor(),
+                statistics.minimum, statistics.maximum,
+                statistics.average, statistics.standard_deviation,
+                statistics.lower_quartile, statistics.upper_quartile, statistics.median
+            );
         }
     }
 
@@ -192,15 +184,13 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
     {
         if( const auto feature = _feature.lock() )
         {
-            if( const auto [feature_values, _] = feature->values().request_value(); feature_values )
-            {
-                const auto yscreen = this->world_to_screen_y( feature_values->value( *element_index ) );
-                painter.setPen( QPen { QColor { config::palette[500] }, 1.0, Qt::DashLine } );
-                painter.drawLine(
-                    QPointF { static_cast<double>( content_rectangle.left() ), yscreen },
-                    QPointF { static_cast<double>( content_rectangle.right() ), yscreen }
-                );
-            }
+            const auto& feature_values = feature->values();
+            const auto yscreen = this->world_to_screen_y( feature_values[*element_index] );
+            painter.setPen( QPen { QColor { config::palette[500] }, 1.0, Qt::DashLine } );
+            painter.drawLine(
+                QPointF { static_cast<double>( content_rectangle.left() ), yscreen },
+                QPointF { static_cast<double>( content_rectangle.right() ), yscreen }
+            );
         }
     }
 
@@ -322,27 +312,30 @@ void BoxplotViewer::export_boxplots() const
 
         if( auto feature = _feature.lock() )
         {
-            const auto [minimum, maximum] = feature->extremes().value();
-            const auto [average, standard_deviation] = feature->moments().value();
-            const auto [lower_quartile, median, upper_quartile] = feature->quantiles().value();
+            const auto& extremes = feature->extremes();
+            const auto& moments = feature->moments();
+            const auto& quantiles = feature->quantiles();
 
-            write_boxplot( "Dataset", feature->element_count(), minimum, maximum, average, standard_deviation, lower_quartile, upper_quartile, median );
+            write_boxplot(
+                "Dataset", feature->element_count(),
+                extremes.minimum, extremes.maximum,
+                moments.average, moments.standard_deviation,
+                quantiles.lower_quartile, quantiles.upper_quartile, quantiles.median
+            );
         }
 
-        if( const auto [segmentation_statistics, _] = _boxplot.statistics().request_value(); segmentation_statistics )
+        const auto segmentation = _database.segmentation();
+        const auto& segmentation_statistics = _boxplot.statistics();
+        for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
         {
-            const auto segmentation = _database.segmentation();
-            for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
-            {
-                const auto segment = segmentation->segment( segment_number );
-                const auto& statistics = segmentation_statistics->value( segment_number );
-                write_boxplot(
-                    segment->identifier(), segment->element_count(),
-                    statistics.minimum, statistics.maximum,
-                    statistics.average, statistics.standard_deviation,
-                    statistics.lower_quartile, statistics.upper_quartile, statistics.median
-                );
-            }
+            const auto segment = segmentation->segment( segment_number );
+            const auto& statistics = segmentation_statistics[segment_number];
+            write_boxplot(
+                segment->identifier(), segment->element_count(),
+                statistics.minimum, statistics.maximum,
+                statistics.average, statistics.standard_deviation,
+                statistics.lower_quartile, statistics.upper_quartile, statistics.median
+            );
         }
     }
 }

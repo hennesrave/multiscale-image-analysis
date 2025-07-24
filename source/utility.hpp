@@ -5,14 +5,10 @@
 
 #include <algorithm>
 #include <chrono>
-#include <condition_variable>
 #include <cmath>
 #include <execution>
-#include <mutex>
 #include <ranges>
-#include <shared_mutex>
 #include <sstream>
-#include <thread>
 
 #include <qcolor.h>
 #include <qstring.h>
@@ -36,10 +32,14 @@ namespace utility
     int stepsize_to_precision( double stepsize );
     int compute_precision( double value );
 
-    template<class IndexType> void parallel_for( IndexType start, IndexType end, auto&& callable )
+    template<class IndexType> void iterate_parallel( IndexType start, IndexType end, auto&& callable )
     {
         const auto range = std::views::iota( start, end );
         std::for_each( std::execution::seq, range.begin(), range.end(), std::forward<decltype( callable )>( callable ) );
+    }
+    template<class IndexType> void iterate_parallel( IndexType end, auto&& callable )
+    {
+        iterate_parallel( IndexType { 0 }, end, std::forward<decltype( callable )>( callable ) );
     }
 }
 
@@ -523,206 +523,85 @@ private:
     std::optional<value_type> _override_value;
 };
 
-// ----- Promise ----- //
+// ----- Computed ----- //
 
-class PromiseObject : public QObject
+class ComputedObject : public QObject
 {
     Q_OBJECT
+public:
+    virtual void invalidate() = 0;
+
 signals:
-    void invalidated();
-    void finished();
+    void changed() const;
 };
 
-template<class T> class Promise : public PromiseObject
+template<class T> class Computed : public ComputedObject
 {
 public:
     using value_type = T;
 
-    Promise() noexcept = default;
-    Promise( const QString& identifier, auto&& compute_function )
+    Computed() noexcept = default;
+    Computed( std::function<value_type()> compute_function ) noexcept : _compute_function { std::move( compute_function ) }
     {
-        this->initialize( identifier, std::forward<decltype( compute_function )>( compute_function ) );
     }
 
-    Promise( const Promise& ) = delete;
-    Promise( Promise&& ) = delete;
-
-    Promise& operator=( const Promise& ) = delete;
-    Promise& operator=( Promise&& ) = delete;
-
-    ~Promise()
+    void initialize( std::function<value_type()> compute_function ) noexcept
     {
-        if( _compute_thread.joinable() )
+        if( _compute_function )
         {
+            Console::warning( "Computed value already initialized, overwriting." );
+        }
+        _compute_function = std::move( compute_function );
+    }
+
+    bool present() const noexcept
+    {
+        return _value.has_value();
+    }
+    operator bool() const noexcept
+    {
+        return this->present();
+    }
+
+    const value_type& value() const
+    {
+        if( !_value.has_value() )
+        {
+            if( !_compute_function )
             {
-                auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-                _terminate = true;
+                Console::critical( "Computed value requested without a compute function." );
             }
-            _flags_condition_variable.notify_one();
-            _compute_thread.join();
+
+            _value = _compute_function();
         }
+        return *_value;
     }
-
-    void initialize( const QString& identifier, auto&& compute_function )
+    const value_type& operator*() const
     {
-        if( _compute_thread.joinable() )
-        {
-            throw;
-        }
-
-        this->setObjectName( identifier );
-        _compute_thread = std::thread { [this, compute_function = std::forward<decltype( compute_function )>( compute_function )]
-        {
-            auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-
-            while( true )
-            {
-                Console::info( std::format( "Promise going to sleep: {}", this->objectName().toStdString() ) );
-                _flags_condition_variable.wait( flags_lock, [this] { return _execute || _terminate; } );
-                Console::info( std::format( "Promise waking up: {}", this->objectName().toStdString() ) );
-
-                if( _terminate )
-                {
-                    break;
-                }
-                _invalidated = false;
-
-                flags_lock.unlock();
-                {
-                    Console::info( std::format( "Promise acquiring write lock: {}", this->objectName().toStdString() ) );
-                    auto value_lock = std::unique_lock<std::shared_mutex> { _value_mutex };
-                    Console::info( std::format( "Promise starting computation: {}", this->objectName().toStdString() ) );
-                    compute_function( _value );
-                    Console::info( std::format( "Promise finished computation: {}", this->objectName().toStdString() ) );
-                }
-                flags_lock.lock();
-
-                if( _terminate )
-                {
-                    break;
-                }
-                else if( _invalidated )
-                {
-                    _invalidated = false;
-                    _execute = true;
-                }
-                else
-                {
-                    _execute = false;
-                    _finished = true;
-
-                    flags_lock.unlock();
-
-                    Console::info( std::format( "Promise emitting finished signal: {}", this->objectName().toStdString() ) );
-                    emit finished();
-                    _finished_condition_variable.notify_all();
-                    flags_lock.lock();
-                }
-            }
-        } };
+        return this->value();
     }
-
-    std::pair<const value_type&, std::shared_lock<std::shared_mutex>> await_value() const
+    const value_type* operator->() const
     {
-        auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-        if( !_finished )
-        {
-            Console::info( std::format(
-                "Awaiting promise {} on thread {}", this->objectName().toStdString(), _compute_thread.get_id()
-            ) );
-
-            _execute = true;
-            flags_lock.unlock();
-            _flags_condition_variable.notify_one();
-
-            flags_lock.lock();
-            _finished_condition_variable.wait( flags_lock, [this] { return _finished; } );
-        }
-
-        auto value_lock = std::shared_lock<std::shared_mutex> { _value_mutex };
-        return std::pair<const value_type&, std::shared_lock<std::shared_mutex>> { _value, std::move( value_lock ) };
-    }
-    std::pair<const value_type*, std::shared_lock<std::shared_mutex>> request_value() const
-    {
-        Console::info( std::format( "Requesting value for promise: {}", this->objectName().toStdString() ) );
-        auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-        if( _finished )
-        {
-            auto value_lock = std::shared_lock<std::shared_mutex> { _value_mutex };
-            return std::pair<const value_type*, std::shared_lock<std::shared_mutex>> { std::addressof( _value ), std::move( value_lock ) };
-        }
-        else
-        {
-            _execute = true;
-            flags_lock.unlock();
-            _flags_condition_variable.notify_one();
-            Console::info( std::format( "Requesting computation for promise: {}", this->objectName().toStdString() ) );
-
-            return std::pair<const value_type*, std::shared_lock<std::shared_mutex>> { nullptr, std::shared_lock<std::shared_mutex> {} };
-        }
-    }
-    value_type value() const
-    {
-        const auto [value, lock] = this->await_value();
-        return value;
-    }
-
-    void subscribe( const QObject* context, const auto& callable ) const
-    {
-        QObject::connect( this, &Promise::finished, context, callable, Qt::QueuedConnection );
-
-        auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-        if( _finished )
-        {
-            flags_lock.unlock();
-            callable();
-        }
-        else
-        {
-            _execute = true;
-            flags_lock.unlock();
-            _flags_condition_variable.notify_one();
-        }
-    }
-    void unsubscribe( const QObject* context ) const
-    {
-        QObject::disconnect( this, &Promise::finished, context, nullptr );
+        return std::addressof( this->value() );
     }
 
     void invalidate()
     {
-        {
-            auto flags_lock = std::unique_lock<std::mutex> { _flags_mutex };
-            if( !_invalidated )
-            {
-                _finished = false;
-                _invalidated = true;
-                _execute = true;
-
-                Console::info( std::format(
-                    "Invalidating promise {} on thread {}", this->objectName().toStdString(), _compute_thread.get_id()
-                ) );
-
-                flags_lock.unlock();
-                emit invalidated();
-            }
-        }
-
-        _flags_condition_variable.notify_one();
+        _value.reset();
+        emit ComputedObject::changed();
+    }
+    void write( const value_type& value )
+    {
+        _value = value;
+        emit ComputedObject::changed();
+    }
+    void write( value_type&& value )
+    {
+        _value = std::move( value );
+        emit ComputedObject::changed();
     }
 
 private:
-    value_type _value;
-    mutable std::shared_mutex _value_mutex;
-
-    mutable bool _execute = false;
-    bool _invalidated = false;
-    bool _terminate = false;
-    mutable std::mutex _flags_mutex;
-    mutable std::condition_variable _flags_condition_variable;
-
-    bool _finished = false;
-    mutable std::condition_variable_any _finished_condition_variable;
-
-    std::thread _compute_thread;
+    mutable std::optional<value_type> _value;
+    std::function<value_type()> _compute_function;
 };

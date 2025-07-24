@@ -7,14 +7,17 @@
 
 Histogram::Histogram( uint32_t bincount ) : QObject {}, _bincount { bincount }
 {
-    _edges.initialize( "Histogram::edges", [this] ( Array<double>& edges ) { compute_edges( edges ); } );
-    _counts.initialize( "Histogram::counts", [this] ( Array<uint32_t>& counts ) { compute_counts( counts ); } );
+    _edges.initialize( std::bind( &Histogram::compute_edges, this ) );
+    _counts.initialize( std::bind( &Histogram::compute_counts, this ) );
 
-    QObject::connect( this, &Histogram::feature_changed, &_edges, &Promise<Array<double>>::invalidate );
-    QObject::connect( this, &Histogram::feature_changed, &_counts, &Promise<Array<uint32_t>>::invalidate );
+    QObject::connect( this, &Histogram::feature_changed, &_edges, &ComputedObject::invalidate );
+    QObject::connect( this, &Histogram::feature_changed, &_counts, &ComputedObject::invalidate );
 
-    QObject::connect( this, &Histogram::bincount_changed, &_edges, &Promise<Array<double>>::invalidate );
-    QObject::connect( this, &Histogram::bincount_changed, &_counts, &Promise<Array<uint32_t>>::invalidate );
+    QObject::connect( this, &Histogram::bincount_changed, &_edges, &ComputedObject::invalidate );
+    QObject::connect( this, &Histogram::bincount_changed, &_counts, &ComputedObject::invalidate );
+
+    QObject::connect( &_edges, &ComputedObject::invalidate, this, &Histogram::edges_changed );
+    QObject::connect( &_counts, &ComputedObject::invalidate, this, &Histogram::counts_changed );
 }
 
 QSharedPointer<const Feature> Histogram::feature() const
@@ -27,21 +30,14 @@ void Histogram::update_feature( QSharedPointer<const Feature> feature )
     {
         if( auto feature = _feature.lock() )
         {
-            feature->values().unsubscribe( this );
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
         }
 
         if( _feature = feature )
         {
-            feature->values().subscribe( this, [this]
-            {
-                _edges.invalidate();
-                _counts.invalidate();
-            } );
-            QObject::connect( feature.get(), &QObject::destroyed, this, [this]
-            {
-                _edges.invalidate();
-                _counts.invalidate();
-            } );
+            QObject::connect( feature.get(), &Feature::values_changed, &_edges, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &Feature::values_changed, &_counts, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
         }
 
         emit feature_changed( feature );
@@ -61,28 +57,24 @@ void Histogram::update_bincount( uint32_t bincount )
     }
 }
 
-const Promise<Array<double>>& Histogram::edges() const
+const Array<double>& Histogram::edges() const
 {
-    return _edges;
+    return *_edges;
 }
-const Promise<Array<uint32_t>>& Histogram::counts() const
+const Array<uint32_t>& Histogram::counts() const
 {
-    return _counts;
+    return *_counts;
 }
 
-void Histogram::compute_edges( Array<double>& edges ) const
+Array<double> Histogram::compute_edges() const
 {
-    if( edges.size() != _bincount + 1 )
-    {
-        edges = Array<double>::allocate( _bincount + 1 );
-    }
+    auto edges = Array<double> { _bincount + 1, 0.0 };
 
     auto minimum = 0.0;
     auto maximum = 1.0;
-
     if( auto feature = _feature.lock() )
     {
-        const auto extremes = feature->extremes().value();
+        const auto& extremes = feature->extremes();
         minimum = extremes.minimum;
         maximum = extremes.maximum;
     }
@@ -93,40 +85,47 @@ void Histogram::compute_edges( Array<double>& edges ) const
         const auto edge = std::clamp( minimum + i * binsize, minimum, maximum );
         edges[i] = edge;
     }
+
+    return edges;
 }
-void Histogram::compute_counts( Array<uint32_t>& counts ) const
+Array<uint32_t> Histogram::compute_counts() const
 {
-    counts = Array<uint32_t> { _bincount, 0 };
+    auto counts = Array<uint32_t> { _bincount, 0 };
 
     if( auto feature = _feature.lock() )
     {
-        _edges.request_value();
-        feature->values().request_value();
+        const auto& edges = this->edges();
+        const auto& values = feature->values();
 
-        const auto [edges, edges_lock] = _edges.await_value();
-        const auto [feature_values, feature_values_lock] = feature->values().await_value();
+        const auto minimum = edges[0];
+        const auto binsize = edges[1] - edges[0];
 
-        for( const auto value : feature_values )
+        for( const auto value : values )
         {
-            ++counts[std::clamp( static_cast<uint32_t>( ( value - edges[0] ) / ( edges[1] - edges[0] ) ), 0u, _bincount - 1 )];
+            ++counts[std::clamp( static_cast<uint32_t>( ( value - minimum ) / binsize ), 0u, _bincount - 1 )];
         }
     }
+
+    return counts;
 }
 
 // ----- StackedHistogram ----- //
 
 StackedHistogram::StackedHistogram( uint32_t bincount ) : QObject {}, _bincount { bincount }
 {
-    _edges.initialize( "StackedHistogram::edges", [this] ( Array<double>& edges ) { compute_edges( edges ); } );
-    _counts.initialize( "StackedHistogram::counts", [this] ( Array<Array<uint32_t>>& counts ) { compute_counts( counts ); } );
+    _edges.initialize( std::bind( &StackedHistogram::compute_edges, this ) );
+    _counts.initialize( std::bind( &StackedHistogram::compute_counts, this ) );
 
-    QObject::connect( this, &StackedHistogram::segmentation_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
+    QObject::connect( this, &StackedHistogram::feature_changed, &_edges, &ComputedObject::invalidate );
+    QObject::connect( this, &StackedHistogram::feature_changed, &_counts, &ComputedObject::invalidate );
 
-    QObject::connect( this, &StackedHistogram::feature_changed, &_edges, &Promise<Array<double>>::invalidate );
-    QObject::connect( this, &StackedHistogram::feature_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
+    QObject::connect( this, &StackedHistogram::bincount_changed, &_edges, &ComputedObject::invalidate );
+    QObject::connect( this, &StackedHistogram::bincount_changed, &_counts, &ComputedObject::invalidate );
 
-    QObject::connect( this, &StackedHistogram::bincount_changed, &_edges, &Promise<Array<double>>::invalidate );
-    QObject::connect( this, &StackedHistogram::bincount_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
+    QObject::connect( this, &StackedHistogram::segmentation_changed, &_counts, &ComputedObject::invalidate );
+
+    QObject::connect( &_edges, &ComputedObject::invalidate, this, &StackedHistogram::edges_changed );
+    QObject::connect( &_counts, &ComputedObject::invalidate, this, &StackedHistogram::counts_changed );
 }
 
 QSharedPointer<const Segmentation> StackedHistogram::segmentation() const
@@ -143,8 +142,8 @@ void StackedHistogram::update_segmentation( QSharedPointer<const Segmentation> s
         }
         if( _segmentation = segmentation )
         {
-            QObject::connect( segmentation.get(), &Segmentation::values_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
-            QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, &_counts, &Promise<Array<Array<uint32_t>>>::invalidate );
+            QObject::connect( segmentation.get(), &Segmentation::segment_numbers_changed, &_counts, &ComputedObject::invalidate );
+            QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, &_counts, &ComputedObject::invalidate );
         }
         emit segmentation_changed( segmentation );
     }
@@ -160,21 +159,14 @@ void StackedHistogram::update_feature( QSharedPointer<const Feature> feature )
     {
         if( auto feature = _feature.lock() )
         {
-            feature->values().unsubscribe( this );
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
         }
 
         if( _feature = feature )
         {
-            feature->values().subscribe( this, [this]
-            {
-                _edges.invalidate();
-                _counts.invalidate();
-            } );
-            QObject::connect( feature.get(), &QObject::destroyed, this, [this]
-            {
-                _edges.invalidate();
-                _counts.invalidate();
-            } );
+            QObject::connect( feature.get(), &Feature::values_changed, &_edges, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &Feature::values_changed, &_counts, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &QObject::destroyed, this, [this] { emit feature_changed( nullptr ); } );
         }
 
         emit feature_changed( feature );
@@ -194,28 +186,24 @@ void StackedHistogram::update_bincount( uint32_t bincount )
     }
 }
 
-const Promise<Array<double>>& StackedHistogram::edges() const
+const Array<double>& StackedHistogram::edges() const
 {
-    return _edges;
+    return *_edges;
 }
-const Promise<Array<Array<uint32_t>>>& StackedHistogram::counts() const
+const Array<Array<uint32_t>>& StackedHistogram::counts() const
 {
-    return _counts;
+    return *_counts;
 }
 
-void StackedHistogram::compute_edges( Array<double>& edges ) const
+Array<double> StackedHistogram::compute_edges() const
 {
-    if( edges.size() != _bincount + 1 )
-    {
-        edges = Array<double>::allocate( _bincount + 1 );
-    }
+    auto edges = Array<double> { _bincount + 1, 0.0 };
 
     auto minimum = 0.0;
     auto maximum = 1.0;
-
     if( auto feature = _feature.lock() )
     {
-        const auto extremes = feature->extremes().value();
+        const auto& extremes = feature->extremes();
         minimum = extremes.minimum;
         maximum = extremes.maximum;
     }
@@ -226,32 +214,34 @@ void StackedHistogram::compute_edges( Array<double>& edges ) const
         const auto edge = std::clamp( minimum + i * binsize, minimum, maximum );
         edges[i] = edge;
     }
+
+    return edges;
 }
-void StackedHistogram::compute_counts( Array<Array<uint32_t>>& counts ) const
+Array<Array<uint32_t>> StackedHistogram::compute_counts() const
 {
+    auto counts = Array<Array<uint32_t>> {};
+
     if( const auto segmentation = _segmentation.lock() )
     {
         counts = Array<Array<uint32_t>> { segmentation->segment_count(), Array<uint32_t> { _bincount, 0 } };
 
         if( const auto feature = _feature.lock() )
         {
-            _edges.request_value();
-            feature->values().request_value();
+            const auto& edges = this->edges();
+            const auto& values = feature->values();
 
-            const auto [edges, edges_lock] = _edges.await_value();
-            const auto [feature_values, feature_values_lock] = feature->values().await_value();
+            const auto minimum = edges[0];
+            const auto binsize = edges[1] - edges[0];
 
             for( uint32_t element_index = 0; element_index < feature->element_count(); ++element_index )
             {
                 const auto segment_number = segmentation->segment_number( element_index );
-                const auto value = feature_values[element_index];
-                ++counts[segment_number][std::clamp( static_cast<uint32_t>( ( value - edges[0] ) / ( edges[1] - edges[0] ) ), 0u, _bincount - 1 )];
+                const auto value = values[element_index];
+                ++counts[segment_number][std::clamp( static_cast<uint32_t>( ( value - minimum ) / binsize ), 0u, _bincount - 1 )];
 
             }
         }
     }
-    else
-    {
-        counts = Array<Array<uint32_t>> { 0, Array<uint32_t> { _bincount, 0 } };
-    }
+
+    return counts;
 }

@@ -2,10 +2,12 @@
 
 // ----- Dataset ----- //
 
-Dataset::Dataset() : QObject {}, _statistics { "Dataset::statistics", [this] ( Statistics& statistics ) { this->compute_statistics( statistics ); } }
+Dataset::Dataset() : QObject {}, _statistics { std::bind( &Dataset::compute_statistics, this ) }
 {
+    QObject::connect( this, &Dataset::intensities_changed, &_statistics, &ComputedObject::invalidate );
     QObject::connect( &_channel_identifier_precision, &Override<int>::value_changed, this, &Dataset::channel_identifiers_changed );
-    QObject::connect( this, &Dataset::invalidated, &_statistics, &Promise<Statistics>::invalidate );
+
+    QObject::connect( &_statistics, &ComputedObject::changed, this, &Dataset::statistics_changed );
 }
 
 QString Dataset::channel_identifier( uint32_t channel_index ) const
@@ -13,33 +15,37 @@ QString Dataset::channel_identifier( uint32_t channel_index ) const
     return QString::number( this->channel_position( channel_index ), 'f', _channel_identifier_precision.value() );
 }
 
-const Promise<Dataset::Statistics>& Dataset::statistics() const noexcept
+const Dataset::Statistics& Dataset::statistics() const noexcept
 {
-    return _statistics;
+    return *_statistics;
 }
-const Promise<Array<Dataset::Statistics>>& Dataset::segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const
+const Array<Dataset::Statistics>& Dataset::segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const
 {
     const auto segmentation_pointer = segmentation.get();
     if( !_segmentation_statistics.contains( segmentation_pointer ) )
     {
-        auto promise = new Promise<Array<Statistics>> { "Dataset::segmentation_statistics", [this, pointer = QWeakPointer { segmentation }]( Array<Statistics>& segmentation_statistics )
+        auto promise = new Computed<Array<Statistics>> { [this, pointer = QWeakPointer { segmentation }]
         {
             if( auto segmentation = pointer.lock() )
             {
-                this->compute_segmentation_statistics( segmentation, segmentation_statistics );
+                return this->compute_segmentation_statistics( segmentation );
             }
             else
             {
-                segmentation_statistics.clear();
+                return Array<Statistics> {};
             }
         } };
-        _segmentation_statistics[segmentation_pointer] = std::unique_ptr<Promise<Array<Statistics>>>( promise );
+        _segmentation_statistics[segmentation_pointer] = std::unique_ptr<Computed<Array<Statistics>>>( promise );
 
-        QObject::connect( this, &Dataset::invalidated, promise, &Promise<Array<Statistics>>::invalidate );
-        QObject::connect( segmentation_pointer, &Segmentation::values_changed, promise, &Promise<Array<Statistics>>::invalidate );
+        QObject::connect( this, &Dataset::intensities_changed, promise, &ComputedObject::invalidate );
+        QObject::connect( segmentation_pointer, &Segmentation::segment_numbers_changed, promise, &ComputedObject::invalidate );
         QObject::connect( segmentation_pointer, &Segmentation::destroyed, this, [this, segmentation_pointer] { _segmentation_statistics.erase( segmentation_pointer ); } );
+        QObject::connect( promise, &ComputedObject::invalidate, [this, pointer = QWeakPointer { segmentation }]
+        {
+            emit segmentation_statistics_changed( pointer.lock() );
+        } );
     }
-    return *_segmentation_statistics[segmentation_pointer];
+    return **_segmentation_statistics[segmentation_pointer];
 }
 
 // ----- Dataset::SpatialMetadata ----- //
@@ -62,9 +68,18 @@ vec2<uint32_t> Dataset::SpatialMetadata::coordinates( uint32_t element_index ) c
 DatasetChannelsFeature::DatasetChannelsFeature( QSharedPointer<const Dataset> dataset, Range<uint32_t> channel_range, Reduction reduction, BaselineCorrection baseline_correction )
     : Feature {}, _dataset { dataset }, _channel_range { channel_range }, _reduction { reduction }, _baseline_correction { baseline_correction }
 {
-    QObject::connect( dataset.get(), &Dataset::invalidated, &_values, &Promise<Array<double>>::invalidate );
-    _values.setObjectName( "DatasetChannelsFeature::values" );
+    QObject::connect( dataset.get(), &Dataset::intensities_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::channel_range_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::reduction_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::baseline_correction_changed, &_values, &ComputedObject::invalidate );
+
+    QObject::connect( this, &DatasetChannelsFeature::channel_range_changed, this, &DatasetChannelsFeature::update_identifier );
     this->update_identifier();
+}
+
+uint32_t DatasetChannelsFeature::element_count() const noexcept
+{
+    return _dataset.lock()->element_count();
 }
 
 QSharedPointer<const Dataset> DatasetChannelsFeature::dataset() const
@@ -84,13 +99,8 @@ void DatasetChannelsFeature::update_channel_range( Range<uint32_t> channel_range
         {
             std::swap( channel_range.lower, channel_range.upper );
         }
-
-        Console::info( "DatasetChannelsFeature::update_channel_range" );
-        Console::info( "----------------------------------------------------------------------" );
         _channel_range = channel_range;
-        _values.invalidate();
         emit channel_range_changed( _channel_range );
-        this->update_identifier();
     }
 }
 
@@ -103,7 +113,6 @@ void DatasetChannelsFeature::update_reduction( Reduction reduction )
     if( _reduction != reduction )
     {
         _reduction = reduction;
-        _values.invalidate();
         emit reduction_changed( _reduction );
     }
 }
@@ -117,14 +126,8 @@ void DatasetChannelsFeature::update_baseline_correction( BaselineCorrection base
     if( _baseline_correction != baseline_correction )
     {
         _baseline_correction = baseline_correction;
-        _values.invalidate();
         emit baseline_correction_changed( _baseline_correction );
     }
-}
-
-uint32_t DatasetChannelsFeature::element_count() const noexcept
-{
-    return _dataset.lock()->element_count();
 }
 
 void DatasetChannelsFeature::update_identifier()
@@ -145,18 +148,14 @@ void DatasetChannelsFeature::update_identifier()
         _identifier.update_automatic_value( "DatasetChannelsFeature" );
     }
 }
-void DatasetChannelsFeature::compute_values( Array<double>& values ) const
+Array<double> DatasetChannelsFeature::compute_values() const
 {
-    Console::info( "DatasetChannelsFeature::compute_values" );
+    auto values = Array<double> { this->element_count(), 0.0 };
+
     if( const auto dataset = _dataset.lock() )
     {
         dataset->visit( [&] ( const auto& dataset )
         {
-            if( values.size() != dataset.element_count() )
-            {
-                values = Array<double>::allocate( dataset.element_count() );
-            }
-
             const auto& intensities = dataset.intensities();
             const auto& channel_positions = dataset.channel_positions();
 
@@ -169,7 +168,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
             {
                 if( _baseline_correction == BaselineCorrection::eNone )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
                         for( uint32_t channel_index = _channel_range.lower; channel_index <= _channel_range.upper; ++channel_index )
@@ -180,7 +179,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
                 }
                 else if( _baseline_correction == BaselineCorrection::eMinimum )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
                         auto minimum_intensity = std::numeric_limits<double>::max();
@@ -197,7 +196,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
                 }
                 else if( _baseline_correction == BaselineCorrection::eLinear )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
 
@@ -221,7 +220,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
             {
                 if( _baseline_correction == BaselineCorrection::eNone )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
 
@@ -240,7 +239,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
                 }
                 else if( _baseline_correction == BaselineCorrection::eMinimum )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
 
@@ -265,7 +264,7 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
                 }
                 else if( _baseline_correction == BaselineCorrection::eLinear )
                 {
-                    utility::parallel_for<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
                     {
                         auto& value = values[element_index] = 0.0;
 
@@ -290,4 +289,6 @@ void DatasetChannelsFeature::compute_values( Array<double>& values ) const
             }
         } );
     }
+
+    return values;
 }

@@ -190,7 +190,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
         }
 
         const auto segmentation_memoryview = py::memoryview::from_buffer(
-            _segmentation->values().data(),
+            _segmentation->segment_numbers().data(),
             { segmentation->element_count() },
             { sizeof( uint32_t ) }
         );

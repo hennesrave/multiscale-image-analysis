@@ -35,28 +35,33 @@ public:
     const QString& identifier() const noexcept;
     void update_identifier( const QString& identifier );
 
-    const Promise<Array<double>>& values() const noexcept;
-    const Promise<Extremes>& extremes() const noexcept;
-    const Promise<Moments>& moments() const noexcept;
-    const Promise<Quantiles>& quantiles() const noexcept;
-    const Promise<Array<uint32_t>>& sorted_indices() const noexcept;
+    const Array<double>& values() const noexcept;
+    const Extremes& extremes() const noexcept;
+    const Moments& moments() const noexcept;
+    const Quantiles& quantiles() const noexcept;
+    const Array<uint32_t>& sorted_indices() const noexcept;
 
 signals:
     void identifier_changed( const QString& identifier );
+    void values_changed();
+    void extremes_changed();
+    void moments_changed();
+    void quantiles_changed();
+    void sorted_indices_changed();
 
 protected:
-    virtual void compute_values( Array<double>& values ) const = 0;
-    void compute_extremes( Extremes& extremes ) const;
-    void compute_moments( Moments& moments ) const;
-    void compute_quantiles( Quantiles& quantiles ) const;
-    void compute_sorted_indices( Array<uint32_t>& sorted_indices ) const;
+    virtual Array<double> compute_values() const = 0;
+    Extremes compute_extremes() const;
+    Moments compute_moments() const;
+    Quantiles compute_quantiles() const;
+    Array<uint32_t> compute_sorted_indices() const;
 
     Override<QString> _identifier;
-    Promise<Array<double>> _values;
-    Promise<Extremes> _extremes;
-    Promise<Moments> _moments;
-    Promise<Quantiles> _quantiles;
-    Promise<Array<uint32_t>> _sorted_indices;
+    Computed<Array<double>> _values;
+    Computed<Extremes> _extremes;
+    Computed<Moments> _moments;
+    Computed<Quantiles> _quantiles;
+    Computed<Array<uint32_t>> _sorted_indices;
 };
 
 // ----- ElementFilterFeature ----- //
@@ -70,7 +75,7 @@ public:
     uint32_t element_count() const noexcept override;
 
 private:
-    void compute_values( Array<double>& values ) const override;
+    Array<double> compute_values() const override;
 
     QWeakPointer<const Feature> _feature;
     std::vector<uint32_t> _element_indices;

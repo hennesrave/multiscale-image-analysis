@@ -13,6 +13,7 @@
 #include <qlayout.h>
 #include <qsplitter.h>
 #include <qstackedlayout.h>
+#include <qtimer.h>
 
 Workspace::Workspace( QSharedPointer<Database> database ) : _database { database }
 {
@@ -75,22 +76,18 @@ Workspace::Workspace( QSharedPointer<Database> database ) : _database { database
     } );
     Console::info( "Finished initialzing callbacks..." );
 
+    const auto dataset = _database->dataset();
+    const auto& statistics = dataset->statistics();
+    const auto channel_index = static_cast<uint32_t>( std::max_element( statistics.channel_averages.begin(), statistics.channel_averages.end() ) - statistics.channel_averages.begin() );
+
+    Console::info( std::format( "Dataset has {} channels, using channel index {} for default feature", dataset->channel_count(), channel_index ) );
+    const auto feature = QSharedPointer<DatasetChannelsFeature> { new DatasetChannelsFeature {
+        dataset,
+        Range<uint32_t> { channel_index, channel_index },
+        DatasetChannelsFeature::Reduction::eAccumulate,
+        DatasetChannelsFeature::BaselineCorrection::eNone
+    } };
+
     _database->colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::viridis.clone() ) );
-    _database->dataset()->statistics().subscribe( this, [this]
-    {
-        const auto dataset = _database->dataset();
-        const auto [statistics, _] = dataset->statistics().await_value();
-        const auto channel_index = static_cast<uint32_t>( std::max_element( statistics.channel_averages.begin(), statistics.channel_averages.end() ) - statistics.channel_averages.begin() );
-
-        Console::info( std::format( "Dataset has {} channels, using channel index {} for default feature", dataset->channel_count(), channel_index ) );
-        const auto feature = QSharedPointer<DatasetChannelsFeature> { new DatasetChannelsFeature {
-            dataset,
-            Range<uint32_t> { channel_index, channel_index },
-            DatasetChannelsFeature::Reduction::eAccumulate,
-            DatasetChannelsFeature::BaselineCorrection::eNone
-        } };
-        _database->features()->append( feature );
-
-        dataset->statistics().unsubscribe( this );
-    } );
+    _database->features()->append( feature );
 }

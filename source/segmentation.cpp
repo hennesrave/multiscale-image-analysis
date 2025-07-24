@@ -73,51 +73,45 @@ void Segment::update_element_count( uint32_t element_count )
 
 // ----- Segmentation ----- //
 
-Segmentation::Segmentation( uint32_t element_count ) : _values { element_count, 0 }
+Segmentation::Segmentation( uint32_t element_count ) : _segment_numbers { element_count, 0 }
 {
     auto default_segment = this->append_segment();
     default_segment->update_color( vec4<float> { 0.0f, 0.0f, 0.0f, 0.0f } );
     default_segment->update_element_count( element_count );
     _current_preset_color_index = 0;
 
-    _element_colors.initialize( "Segmentation::element_colors", [this] ( auto& element_colors ) { this->compute_element_colors( element_colors ); } );
-    _element_indices.initialize( "Segmentation::element_indices", [this] ( auto& element_indices ) { this->compute_element_indices( element_indices ); } );
+    _element_colors.initialize( std::bind( &Segmentation::compute_element_colors, this ) );
+    _element_indices.initialize( std::bind( &Segmentation::compute_element_indices, this ) );
 
-    QObject::connect( this, &Segmentation::segment_appended, this, [this]
-    {
-        emit segment_count_changed( this->segment_count() );
-    } );
-    QObject::connect( this, &Segmentation::segment_removed, this, [this]
-    {
-        emit segment_count_changed( this->segment_count() );
-    } );
+    QObject::connect( this, &Segmentation::segment_appended, this, [this] { emit segment_count_changed( this->segment_count() ); } );
+    QObject::connect( this, &Segmentation::segment_removed, this, [this] { emit segment_count_changed( this->segment_count() ); } );
 
-    QObject::connect( this, &Segmentation::values_changed, &_element_colors, &Promise<Array<vec4<float>>>::invalidate );
-    QObject::connect( this, &Segmentation::segment_count_changed, &_element_indices, &Promise<Array<std::vector<uint32_t>>>::invalidate );
-    QObject::connect( this, &Segmentation::values_changed, &_element_indices, &Promise<Array<std::vector<uint32_t>>>::invalidate );
+    QObject::connect( this, &Segmentation::segment_numbers_changed, &_element_colors, &ComputedObject::invalidate );
+    QObject::connect( this, &Segmentation::segment_numbers_changed, &_element_indices, &ComputedObject::invalidate );
+    QObject::connect( this, &Segmentation::segment_count_changed, &_element_indices, &ComputedObject::invalidate );
 }
 
 uint32_t Segmentation::element_count() const noexcept
 {
-    return static_cast<uint32_t>( _values.size() );
-}
-
-const Array<uint32_t>& Segmentation::values() const noexcept
-{
-    return _values;
-}
-uint32_t Segmentation::value( uint32_t element_index ) const
-{
-    return _values.value( element_index );
+    return static_cast<uint32_t>( _segment_numbers.size() );
 }
 
 const Array<uint32_t>& Segmentation::segment_numbers() const noexcept
 {
-    return _values;
+    return _segment_numbers;
 }
 uint32_t Segmentation::segment_number( uint32_t element_index ) const
 {
-    return _values.value( element_index );
+    return _segment_numbers[element_index];
+}
+
+const Array<vec4<float>>& Segmentation::element_colors() const noexcept
+{
+    return *_element_colors;
+}
+const Array<std::vector<uint32_t>>& Segmentation::element_indices() const noexcept
+{
+    return *_element_indices;
 }
 
 uint32_t Segmentation::segment_count() const noexcept
@@ -137,7 +131,7 @@ QSharedPointer<Segment> Segmentation::append_segment()
     auto segment = QSharedPointer<Segment> { new Segment { *this, this->segment_count(), 0, color } };
 
     QObject::connect( segment.data(), &Segment::identifier_changed, this, &Segmentation::segment_identifier_changed );
-    QObject::connect( segment.data(), &Segment::color_changed, &_element_colors, &Promise<Array<vec4<float>>>::invalidate );
+    QObject::connect( segment.data(), &Segment::color_changed, &_element_colors, &ComputedObject::invalidate );
     QObject::connect( segment.data(), &Segment::color_changed, this, &Segmentation::segment_color_changed );
 
     _segments.push_back( segment );
@@ -150,16 +144,16 @@ void Segmentation::remove_segment( QSharedPointer<Segment> segment )
     if( _segments[segment_number] == segment && segment_number > 0 )
     {
         auto default_segment_element_count = _segments.front()->element_count();
-        for( auto& value : _values )
+        for( auto& current_segment_number : _segment_numbers )
         {
-            if( value == segment_number )
+            if( current_segment_number == segment_number )
             {
-                value = 0;
+                current_segment_number = 0;
                 ++default_segment_element_count;
             }
-            else if( value > segment_number )
+            else if( current_segment_number > segment_number )
             {
-                --value;
+                --current_segment_number;
             }
         }
         _segments.front()->update_element_count( default_segment_element_count );
@@ -173,7 +167,7 @@ void Segmentation::remove_segment( QSharedPointer<Segment> segment )
 
         if( segment->element_count() )
         {
-            emit values_changed( _values );
+            emit segment_numbers_changed();
         }
     }
 }
@@ -193,9 +187,9 @@ nlohmann::json Segmentation::serialize() const
     }
 
     auto segment_numbers = nlohmann::json::array();
-    for( const auto value : _values )
+    for( const auto segment_number : _segment_numbers )
     {
-        segment_numbers.push_back( value );
+        segment_numbers.push_back( segment_number );
     }
 
     auto json = nlohmann::json {};
@@ -238,7 +232,7 @@ bool Segmentation::deserialize( const nlohmann::json& json )
     auto current_index = 0;
     for( const uint32_t segment_number : segment_numbers )
     {
-        _values[current_index++] = segment_number;
+        _segment_numbers[current_index++] = segment_number;
     }
 
     for( uint32_t segment_number = 0; segment_number < element_counts.size(); ++segment_number )
@@ -251,7 +245,7 @@ bool Segmentation::deserialize( const nlohmann::json& json )
         this->remove_segment( _segments.back() );
     }
 
-    emit values_changed( _values );
+    emit segment_numbers_changed();
     return true;
 }
 
@@ -260,39 +254,29 @@ Segmentation::Editor Segmentation::editor()
     return Editor { *this };
 }
 
-const Promise<Array<vec4<float>>>& Segmentation::element_colors() const noexcept
+Array<vec4<float>> Segmentation::compute_element_colors() const
 {
-    return _element_colors;
-}
-const Promise<Array<std::vector<uint32_t>>>& Segmentation::element_indices() const noexcept
-{
-    return _element_indices;
-}
+    auto element_colors = Array<vec4<float>>::allocate( this->element_count() );
 
-void Segmentation::compute_element_colors( Array<vec4<float>>& element_colors ) const
-{
-    if( element_colors.size() != this->element_count() )
+    utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
     {
-        element_colors = Array<vec4<float>>::allocate( this->element_count() );
-    }
-
-    utility::parallel_for( 0u, this->element_count(), [this, &element_colors] ( uint32_t element_index )
-    {
-        element_colors[element_index] = this->segment( _values[element_index] )->color();
+        const auto segment_number = _segment_numbers[element_index];
+        element_colors[element_index] = this->segment( segment_number )->color();
     } );
+
+    return element_colors;
 }
-void Segmentation::compute_element_indices( Array<std::vector<uint32_t>>& element_indices ) const
+Array<std::vector<uint32_t>> Segmentation::compute_element_indices() const
 {
-    if( element_indices.size() != this->segment_count() )
-    {
-        element_indices = Array<std::vector<uint32_t>> { this->segment_count(), std::vector<uint32_t> {} };
-    }
+    auto element_indices = Array<std::vector<uint32_t>> { this->segment_count(), std::vector<uint32_t> {} };
 
     for( uint32_t element_index = 0; element_index < this->element_count(); ++element_index )
     {
-        const auto segment_number = _values[element_index];
+        const auto segment_number = _segment_numbers[element_index];
         element_indices[segment_number].push_back( element_index );
     }
+
+    return element_indices;
 }
 
 // ----- Segmentation::Editor ----- //
@@ -303,12 +287,12 @@ Segmentation::Editor::~Editor()
     {
         _segmentation.segment( segment_number )->update_element_count( _element_counts[segment_number] );
     }
-    emit _segmentation.values_changed( _segmentation._values );
+    emit _segmentation.segment_numbers_changed();
 }
 
 void Segmentation::Editor::update_value( uint32_t element_index, uint32_t segment_number )
 {
-    auto& current_segment_number = _segmentation._values.value( element_index );
+    auto& current_segment_number = _segmentation._segment_numbers[element_index];
     --_element_counts[current_segment_number];
     ++_element_counts[current_segment_number = segment_number];
 }

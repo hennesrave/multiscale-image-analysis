@@ -19,10 +19,11 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
     this->setMouseTracking( true );
 
     const auto dataset = _database.dataset();
-    dataset->statistics().subscribe( this, [this]
+    QObject::connect( dataset.get(), &Dataset::statistics_changed, this, &SpectrumViewer::update_hovered_feature );
+    QObject::connect( dataset.get(), &Dataset::statistics_changed, this, [this]
     {
         const auto dataset = _database.dataset();
-        const auto [statistics, _] = dataset->statistics().await_value();
+        const auto& statistics = dataset->statistics();
 
         auto xaxis = vec2<double> { dataset->channel_position( 0 ), dataset->channel_position( dataset->channel_count() - 1 ) };
         auto yaxis = vec2<double> { statistics.minimum, statistics.maximum };
@@ -67,7 +68,7 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
         this->update_xaxis_ticks( std::move( ticks ) );
         this->update();
     } );
-    dataset->segmentation_statistics( _database.segmentation() ).subscribe( this, [this] { this->update(); } );
+    QObject::connect( dataset.get(), &Dataset::segmentation_statistics_changed, this, qOverload<>( &QWidget::update ) );
 
     const auto features = _database.features();
     QObject::connect( features.get(), &CollectionObject::object_appended, this, [this] ( QSharedPointer<QObject> object )
@@ -122,31 +123,28 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
         _statistics_mode == StatisticsMode::eAverage ? &Dataset::Statistics::channel_averages
         : _statistics_mode == StatisticsMode::eMinimum ? &Dataset::Statistics::channel_minimums
         : &Dataset::Statistics::channel_maximums;
-    if( const auto [statistics, _] = dataset->statistics().request_value(); statistics )
+    const auto& statistics = dataset->statistics();
+    for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
     {
-        for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
-        {
-            const auto yscreen = this->world_to_screen_y( ( statistics->*statistics_accessor )[channel_index] );
-            polyline[channel_index].setY( yscreen );
-        }
-        spectra.push_back( Spectrum { polyline, QColor { config::palette[900] } } );
+        const auto yscreen = this->world_to_screen_y( ( statistics.*statistics_accessor )[channel_index] );
+        polyline[channel_index].setY( yscreen );
     }
+    spectra.push_back( Spectrum { polyline, QColor { config::palette[900] } } );
 
-    if( const auto [segmentation_statistics, _] = dataset->segmentation_statistics( segmentation ).request_value(); segmentation_statistics )
+
+    const auto& segmentation_statistics = dataset->segmentation_statistics( segmentation );
+    for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
     {
-        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        const auto& segment = segmentation->segment( segment_number );
+        if( segment->element_count() > 0 )
         {
-            const auto& segment = segmentation->segment( segment_number );
-            if( segment->element_count() > 0 )
+            const auto& statistics = segmentation_statistics[segment_number];
+            for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
             {
-                const auto statistics = &segmentation_statistics->value( segment_number );
-                for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
-                {
-                    const auto yscreen = this->world_to_screen_y( ( statistics->*statistics_accessor )[channel_index] );
-                    polyline[channel_index].setY( yscreen );
-                }
-                spectra.push_back( Spectrum { polyline, segment->color().qcolor() } );
+                const auto yscreen = this->world_to_screen_y( ( statistics.*statistics_accessor )[channel_index] );
+                polyline[channel_index].setY( yscreen );
             }
+            spectra.push_back( Spectrum { polyline, segment->color().qcolor() } );
         }
     }
 
@@ -706,10 +704,10 @@ void SpectrumViewer::export_spectra() const
             stream << '\n';
         };
 
-        const auto [statistics, statistics_lock] = dataset->statistics().await_value();
+        const auto& statistics = dataset->statistics();
         write_statistics( "Dataset", dataset->element_count(), statistics );
 
-        const auto [segmentation_statistics, segmentation_statistics_lock] = dataset->segmentation_statistics( _database.segmentation() ).await_value();
+        const auto& segmentation_statistics = dataset->segmentation_statistics( _database.segmentation() );
         for( uint32_t segment_number = 0; segment_number < _database.segmentation()->segment_count(); ++segment_number )
         {
             const auto& segment = _database.segmentation()->segment( segment_number );

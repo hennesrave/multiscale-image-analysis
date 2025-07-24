@@ -69,20 +69,22 @@ public:
     QString channel_identifier( uint32_t channel_index ) const;
 
     void visit( auto&& callable ) const;
-    const Promise<Statistics>& statistics() const noexcept;
-    const Promise<Array<Statistics>>& segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const;
+    const Statistics& statistics() const noexcept;
+    const Array<Statistics>& segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const;
 
 signals:
-    void invalidated();
-    void channel_identifiers_changed();
+    void intensities_changed() const;
+    void statistics_changed() const;
+    void segmentation_statistics_changed( QSharedPointer<const Segmentation> segmentation ) const;
+    void channel_identifiers_changed() const;
 
 protected:
-    virtual void compute_statistics( Statistics& statistics ) const = 0;
-    virtual void compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation, Array<Statistics>& segmentation_statistics ) const = 0;
+    virtual Statistics compute_statistics() const = 0;
+    virtual Array<Statistics> compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const = 0;
 
     Override<int> _channel_identifier_precision { 2, std::nullopt };
-    Promise<Statistics> _statistics;
-    mutable std::unordered_map<const Segmentation*, std::unique_ptr<Promise<Array<Statistics>>>> _segmentation_statistics;
+    Computed<Statistics> _statistics;
+    mutable std::unordered_map<const Segmentation*, std::unique_ptr<Computed<Array<Statistics>>>> _segmentation_statistics;
 };
 
 // ----- TensorDataset ----- //
@@ -155,7 +157,7 @@ public:
 
     void apply_baseline_correction_minimum() override
     {
-        utility::parallel_for<uint32_t>( 0, this->element_count(), [this] ( uint32_t element_index )
+        utility::iterate_parallel( this->element_count(), [this] ( uint32_t element_index )
         {
             auto* element_intensities = _intensities.data() + element_index * this->channel_count();
             const auto minimum = *std::min_element( element_intensities, element_intensities + this->channel_count() );
@@ -164,11 +166,11 @@ public:
                 element_intensities[channel_index] -= minimum;
             }
         } );
-        emit invalidated();
+        emit intensities_changed();
     }
     void apply_baseline_correction_linear() override
     {
-        utility::parallel_for<uint32_t>( 0, this->element_count(), [this] ( uint32_t element_index )
+        utility::iterate_parallel( this->element_count(), [this] ( uint32_t element_index )
         {
             auto element_intensities = _intensities.data() + element_index * this->channel_count();
 
@@ -185,12 +187,14 @@ public:
                 element_intensities[channel_index] -= intensity_correction;
             }
         } );
-        emit invalidated();
+        emit intensities_changed();
     }
 
 private:
-    void compute_statistics( Statistics& statistics ) const override
+    Statistics compute_statistics() const override
     {
+        auto statistics = Statistics {};
+
         statistics.channel_minimums = Array<double> { this->channel_count(), std::numeric_limits<double>::max() };
         statistics.channel_maximums = Array<double> { this->channel_count(), std::numeric_limits<double>::lowest() };
         statistics.channel_averages = Array<double> { this->channel_count(), 0.0 };
@@ -222,10 +226,12 @@ private:
             statistics.average += statistics.channel_averages[channel_index];
         }
         statistics.average /= this->channel_count();
+
+        return statistics;
     }
-    void compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation, Array<Statistics>& segmentation_statistics ) const override
+    Array<Statistics> compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const override
     {
-        segmentation_statistics = Array<Statistics> { segmentation->segment_count(), Statistics {} };
+        auto segmentation_statistics = Array<Statistics> { segmentation->segment_count(), Statistics {} };
         for( auto& statistics : segmentation_statistics )
         {
             statistics.channel_minimums = Array<double> { this->channel_count(), std::numeric_limits<double>::max() };
@@ -272,6 +278,8 @@ private:
 
             statistics.average /= this->channel_count();
         }
+
+        return segmentation_statistics;
     }
 
     SpatialMetadata _spatial_metadata;
@@ -312,6 +320,9 @@ public:
 
     DatasetChannelsFeature( QSharedPointer<const Dataset> dataset, Range<uint32_t> channel_range, Reduction reduction, BaselineCorrection baseline_correction );
 
+    // Feature interface
+    uint32_t element_count() const noexcept override;
+
     // Properties
     QSharedPointer<const Dataset> dataset() const;
 
@@ -324,9 +335,6 @@ public:
     BaselineCorrection baseline_correction() const noexcept;
     void update_baseline_correction( BaselineCorrection baseline_correction );
 
-    // Feature interface
-    uint32_t element_count() const noexcept override;
-
 signals:
     void channel_range_changed( Range<uint32_t> channel_range );
     void reduction_changed( Reduction reduction );
@@ -334,7 +342,7 @@ signals:
 
 private:
     void update_identifier();
-    void compute_values( Array<double>& values ) const override;
+    Array<double> compute_values() const override;
 
     QWeakPointer<const Dataset> _dataset;
     Range<uint32_t> _channel_range;

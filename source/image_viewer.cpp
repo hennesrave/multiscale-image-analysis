@@ -30,8 +30,8 @@ ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { databas
     this->setFocusPolicy( Qt::WheelFocus );
     this->setMouseTracking( true );
 
-    _segmentation->element_colors().subscribe( this, [this] { this->update(); } );
-
+    const auto segmentation = _database.segmentation();
+    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, qOverload<>(&QWidget::update));
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
 
@@ -41,11 +41,11 @@ void ImageViewer::update_colormap( QSharedPointer<Colormap> colormap )
     {
         if( auto colormap = _colormap.lock() )
         {
-            colormap->colors().unsubscribe( this );
+            QObject::disconnect( colormap.get(), &Colormap::colors_changed, this, qOverload<>( &QWidget::update ) );
         }
         if( _colormap = colormap )
         {
-            colormap->colors().subscribe( this, [this] { this->update(); } );
+            QObject::connect( colormap.get(), &Colormap::colors_changed, this, qOverload<>( &QWidget::update ) );
         }
         this->update();
     }
@@ -67,25 +67,21 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     // Render image
     if( auto colormap = _colormap.lock() )
     {
-        if( const auto [colors, _] = colormap->colors().request_value(); colors && !colors->empty() )
-        {
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
-            const auto image = QImage { reinterpret_cast<const uchar*>( colors->data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-            painter.setOpacity( _image_opacity );
-            painter.drawImage( _image_rectangle, image );
-            painter.setOpacity( 1.0 );
-        }
-    }
-
-    // Render segmentation colors
-    if( const auto [segmentation_colors, _] = _segmentation->element_colors().request_value(); segmentation_colors )
-    {
+        const auto& colors = colormap->colors();
         const auto dimensions = _dataset->spatial_metadata()->dimensions;
-        const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors->data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-        painter.setOpacity( _segmentation_opacity );
+        const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+        painter.setOpacity( _image_opacity );
         painter.drawImage( _image_rectangle, image );
         painter.setOpacity( 1.0 );
     }
+
+    // Render segmentation colors
+    const auto& segmentation_colors = _segmentation->element_colors();
+    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+    painter.setOpacity( _segmentation_opacity );
+    painter.drawImage( _image_rectangle, image );
+    painter.setOpacity( 1.0 );
 
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
@@ -159,12 +155,10 @@ void ImageViewer::paintEvent( QPaintEvent* event )
             {
                 if( auto feature = colormap_1d->feature() )
                 {
-                    if( const auto [feature_values, _] = feature->values().request_value(); feature_values )
-                    {
-                        const auto value = feature_values->value( *element_index );
-                        labels_string += QString { "\nvalue: " };
-                        values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
-                    }
+                    const auto& feature_values = feature->values();
+                    const auto value = feature_values[*element_index];
+                    labels_string += QString { "\nvalue: " };
+                    values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
                 }
             }
         }
@@ -186,8 +180,6 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
         painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
     }
-
-    //Console::info( std::format( "Finished rendering in {} ms", timer.milliseconds() ) );
 }
 void ImageViewer::wheelEvent( QWheelEvent* event )
 {
@@ -402,7 +394,7 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
         // Render image
         if( auto colormap = _colormap.lock() )
         {
-            const auto [colors, _] = colormap->colors().await_value();
+            const auto& colors = colormap->colors();
             const auto dimensions = _dataset->spatial_metadata()->dimensions;
             const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
             painter.setOpacity( _image_opacity );
@@ -410,7 +402,7 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
         }
 
         // Render segmentation colors
-        const auto [segmentation_colors, _] = _database.segmentation()->element_colors().await_value();
+        const auto& segmentation_colors = _database.segmentation()->element_colors();
         const auto segmentation_image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
         painter.setOpacity( _segmentation_opacity );
         painter.drawImage( image.rect(), segmentation_image );
@@ -460,7 +452,7 @@ void ImageViewer::export_columns() const
         {
             if( auto feature = colormap_1d->feature() )
             {
-                const auto [feature_values, _] = feature->values().await_value();
+                const auto& feature_values = feature->values();
                 for( uint32_t element_index = 0; element_index < dataset->element_count(); ++element_index )
                 {
                     const auto coordinates = spatial_metadata->coordinates( element_index );
@@ -504,7 +496,7 @@ void ImageViewer::export_matrix() const
         {
             if( auto feature = colormap_1d->feature() )
             {
-                const auto [feature_values, _] = feature->values().await_value();
+                const auto& feature_values = feature->values();
                 for( uint32_t y = 0; y < spatial_metadata->dimensions.y; ++y )
                 {
                     stream << y;

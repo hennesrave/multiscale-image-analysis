@@ -21,22 +21,24 @@ public:
     uint32_t bincount() const noexcept;
     void update_bincount( uint32_t bincount );
 
-    const Promise<Array<double>>& edges() const;
-    const Promise<Array<uint32_t>>& counts() const;
+    const Array<double>& edges() const;
+    const Array<uint32_t>& counts() const;
 
 signals:
     void feature_changed( QSharedPointer<const Feature> feature );
     void bincount_changed( uint32_t bincount );
+    void edges_changed();
+    void counts_changed();
 
 private:
-    void compute_edges( Array<double>& edges ) const;
-    void compute_counts( Array<uint32_t>& counts ) const;
+    Array<double> compute_edges() const;
+    Array<uint32_t> compute_counts() const;
 
     QWeakPointer<const Feature> _feature;
     uint32_t _bincount;
 
-    Promise<Array<double>> _edges;
-    Promise<Array<uint32_t>> _counts;
+    Computed<Array<double>> _edges;
+    Computed<Array<uint32_t>> _counts;
 };
 
 // ----- StackedHistogram ----- //
@@ -56,22 +58,24 @@ public:
     uint32_t bincount() const noexcept;
     void update_bincount( uint32_t bincount );
 
-    const Promise<Array<double>>& edges() const;
-    const Promise<Array<Array<uint32_t>>>& counts() const;
+    const Array<double>& edges() const;
+    const Array<Array<uint32_t>>& counts() const;
 
 signals:
     void segmentation_changed( QSharedPointer<const Segmentation> segmentation );
     void feature_changed( QSharedPointer<const Feature> feature );
     void bincount_changed( uint32_t bincount );
+    void edges_changed();
+    void counts_changed();
 
 private:
-    void compute_edges( Array<double>& edges ) const;
-    void compute_counts( Array<Array<uint32_t>>& counts ) const;
+    Array<double> compute_edges() const;
+    Array<Array<uint32_t>> compute_counts() const;
 
     QWeakPointer<const Segmentation> _segmentation;
     QWeakPointer<const Feature> _feature;
     uint32_t _bincount;
 
-    Promise<Array<double>> _edges;
-    Promise<Array<Array<uint32_t>>> _counts;
+    Computed<Array<double>> _edges;
+    Computed<Array<Array<uint32_t>>> _counts;
 };

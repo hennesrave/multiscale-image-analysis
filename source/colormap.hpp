@@ -54,14 +54,14 @@ public:
     Colormap();
 
     virtual uint32_t element_count() const = 0;
-    const Promise<Array<vec4<float>>>& colors() const noexcept;
+    const Array<vec4<float>>& colors() const;
 
 signals:
-    void colors_changed();
+    void colors_changed() const;
 
 protected:
-    virtual void compute_colors( Array<vec4<float>>& colors ) const = 0;
-    Promise<Array<vec4<float>>> _colors;
+    virtual Array<vec4<float>> compute_colors() const = 0;
+    Computed<Array<vec4<float>>> _colors;
 };
 
 // ----- Colormap1D ---- //
@@ -71,6 +71,8 @@ class Colormap1D : public Colormap
     Q_OBJECT
 public:
     Colormap1D( std::unique_ptr<ColormapTemplate> colormap_template );
+
+    uint32_t element_count() const override;
 
     const std::unique_ptr<ColormapTemplate>& colormap_template() const noexcept;
     void update_colormap_template( std::unique_ptr<ColormapTemplate> colormap_template );
@@ -84,14 +86,12 @@ public:
     const Override<double>& upper() const noexcept;
     Override<double>& upper() noexcept;
 
-    uint32_t element_count() const override;
-
 signals:
     void template_changed( const std::unique_ptr<ColormapTemplate>& colormap_template );
     void feature_changed( QSharedPointer<Feature> feature );
 
 private:
-    void compute_colors( Array<vec4<float>>& colors ) const override;
+    Array<vec4<float>> compute_colors() const override;
 
     std::unique_ptr<ColormapTemplate> _colormap_template;
     QWeakPointer<Feature> _feature;
@@ -107,15 +107,14 @@ class ColormapRGB : public Colormap
 public:
     ColormapRGB();
 
+    uint32_t element_count() const override;
+
     const Colormap1D& colormap_r() const noexcept;
     const Colormap1D& colormap_g() const noexcept;
     const Colormap1D& colormap_b() const noexcept;
 
-    uint32_t element_count() const override;
-
 private:
-    void compute_colors( Array<vec4<float>>& colors ) const override;
-
+    Array<vec4<float>> compute_colors() const override;
     Colormap1D _colormap_r { ColormapTemplate::red.clone() };
     Colormap1D _colormap_g { ColormapTemplate::green.clone() };
     Colormap1D _colormap_b { ColormapTemplate::blue.clone() };
