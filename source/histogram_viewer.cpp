@@ -170,9 +170,9 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
     if( hovered_object_segmentation.rectangle.width() )
     {
         const auto segment = _database.segmentation()->segment( hovered_object_segmentation.segment_number );
-        const auto count = segmentation_counts[hovered_object_segmentation.segment_number][hovered_object_segmentation.bin];
-        const auto percentage_segment = count / static_cast<double>( segment->element_count() );
-        const auto percentage_bin = count / static_cast<double>( counts[hovered_object_segmentation.bin] );
+        const auto segment_count = segmentation_counts[hovered_object_segmentation.segment_number][hovered_object_segmentation.bin];
+        const auto percentage_segment = segment_count / static_cast<double>( segment->element_count() );
+        const auto percentage_bin = segment_count / static_cast<double>( counts[hovered_object_segmentation.bin] );
 
         labels_string += "\nBin:";
         values_string += '\n' + QString::number( 100.0 * percentage_segment, 'f', 1 ) + " % of segment";

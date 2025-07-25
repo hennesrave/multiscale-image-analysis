@@ -65,6 +65,8 @@ const Array<GroupedBoxplot::Statistics>& GroupedBoxplot::statistics() const
 
 Array<GroupedBoxplot::Statistics> GroupedBoxplot::compute_statistics() const
 {
+    Console::info( "GroupedBoxplot::compute_statistics" );
+
     auto statistics = Array<Statistics> {};
 
     const auto segmentation = _segmentation.lock();

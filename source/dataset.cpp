@@ -150,6 +150,7 @@ void DatasetChannelsFeature::update_identifier()
 }
 Array<double> DatasetChannelsFeature::compute_values() const
 {
+    Console::info( "DatasetChannelsFeature::compute_values" );
     auto values = Array<double> { this->element_count(), 0.0 };
 
     if( const auto dataset = _dataset.lock() )

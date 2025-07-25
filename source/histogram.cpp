@@ -68,6 +68,7 @@ const Array<uint32_t>& Histogram::counts() const
 
 Array<double> Histogram::compute_edges() const
 {
+    Console::info( "Histogram::compute_edges" );
     auto edges = Array<double> { _bincount + 1, 0.0 };
 
     auto minimum = 0.0;
@@ -90,6 +91,7 @@ Array<double> Histogram::compute_edges() const
 }
 Array<uint32_t> Histogram::compute_counts() const
 {
+    Console::info( "Histogram::compute_counts" );
     auto counts = Array<uint32_t> { _bincount, 0 };
 
     if( auto feature = _feature.lock() )
@@ -197,6 +199,7 @@ const Array<Array<uint32_t>>& StackedHistogram::counts() const
 
 Array<double> StackedHistogram::compute_edges() const
 {
+    Console::info( "StackedHistogram::compute_edges" );
     auto edges = Array<double> { _bincount + 1, 0.0 };
 
     auto minimum = 0.0;
@@ -209,6 +212,7 @@ Array<double> StackedHistogram::compute_edges() const
     }
 
     const auto binsize = ( maximum - minimum ) / _bincount;
+
     for( uint32_t i = 0; i <= _bincount; ++i )
     {
         const auto edge = std::clamp( minimum + i * binsize, minimum, maximum );
@@ -219,6 +223,7 @@ Array<double> StackedHistogram::compute_edges() const
 }
 Array<Array<uint32_t>> StackedHistogram::compute_counts() const
 {
+    Console::info( "StackedHistogram::compute_counts" );
     auto counts = Array<Array<uint32_t>> {};
 
     if( const auto segmentation = _segmentation.lock() )
@@ -238,7 +243,6 @@ Array<Array<uint32_t>> StackedHistogram::compute_counts() const
                 const auto segment_number = segmentation->segment_number( element_index );
                 const auto value = values[element_index];
                 ++counts[segment_number][std::clamp( static_cast<uint32_t>( ( value - minimum ) / binsize ), 0u, _bincount - 1 )];
-
             }
         }
     }

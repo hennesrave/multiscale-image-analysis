@@ -11,13 +11,13 @@ Feature::Feature()
     , _quantiles { std::bind( &Feature::compute_quantiles, this ) }
     , _sorted_indices { std::bind( &Feature::compute_sorted_indices, this ) }
 {
-    QObject::connect( &_identifier, &Override<QString>::value_changed, this, [this] { emit identifier_changed( _identifier.value() ); } );
-    QObject::connect( &_values, &ComputedObject::changed, this, &Feature::values_changed );
     QObject::connect( &_values, &ComputedObject::changed, &_extremes, &ComputedObject::invalidate );
     QObject::connect( &_values, &ComputedObject::changed, &_moments, &ComputedObject::invalidate );
     QObject::connect( &_values, &ComputedObject::changed, &_quantiles, &ComputedObject::invalidate );
     QObject::connect( &_values, &ComputedObject::changed, &_sorted_indices, &ComputedObject::invalidate );
 
+    QObject::connect( &_identifier, &Override<QString>::value_changed, this, [this] { emit identifier_changed( _identifier.value() ); } );
+    QObject::connect( &_values, &ComputedObject::changed, this, &Feature::values_changed );
     QObject::connect( &_extremes, &ComputedObject::changed, this, &Feature::extremes_changed );
     QObject::connect( &_moments, &ComputedObject::changed, this, &Feature::moments_changed );
     QObject::connect( &_quantiles, &ComputedObject::changed, this, &Feature::quantiles_changed );
@@ -56,6 +56,7 @@ const Array<uint32_t>& Feature::sorted_indices() const noexcept
 
 Feature::Extremes Feature::compute_extremes() const
 {
+    Console::info( "Feature::compute_extremes" );
     auto extremes = Feature::Extremes {
         .minimum = 0.0,
         .maximum = 0.0
@@ -77,6 +78,7 @@ Feature::Extremes Feature::compute_extremes() const
 }
 Feature::Moments Feature::compute_moments() const
 {
+    Console::info( "Feature::compute_moments" );
     auto moments = Feature::Moments {
         .average = 0.0,
         .standard_deviation = 0.0
@@ -101,6 +103,7 @@ Feature::Moments Feature::compute_moments() const
 }
 Feature::Quantiles Feature::compute_quantiles() const
 {
+    Console::info( "Feature::compute_quantiles" );
     auto quantiles = Feature::Quantiles {
         .lower_quartile = 0.0,
         .median = 0.0,
@@ -140,6 +143,7 @@ Feature::Quantiles Feature::compute_quantiles() const
 }
 Array<uint32_t> Feature::compute_sorted_indices() const
 {
+    Console::info( "Feature::compute_sorted_indices" );
     auto sorted_indices = Array<uint32_t>::allocate( this->element_count() );
     std::iota( sorted_indices.begin(), sorted_indices.end(), 0 );
 
@@ -166,6 +170,7 @@ uint32_t ElementFilterFeature::element_count() const noexcept
 
 Array<double> ElementFilterFeature::compute_values() const
 {
+    Console::info( "ElementFilterFeature::compute_values" );
     auto values = Array<double> { this->element_count(), 0.0 };
 
     if( const auto feature = _feature.lock() )
