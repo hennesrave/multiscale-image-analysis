@@ -363,6 +363,7 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
     const auto segmentation = _database.segmentation();
     QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::segmentation_changed );
     QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::segmentation_changed );
+    this->segmentation_changed();
 
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
