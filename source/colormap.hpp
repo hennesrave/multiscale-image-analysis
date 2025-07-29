@@ -20,6 +20,7 @@ public:
     static const ColormapTemplate viridis;
     static const ColormapTemplate inferno;
     static const ColormapTemplate plasma;
+    static const ColormapTemplate turbo;
     static const ColormapTemplate rainbow;
     static const ColormapTemplate coolwarm;
     static const ColormapTemplate seismic;
