@@ -3,10 +3,6 @@ MIA (Multiscale Image Analysis) is a visualization software for spectral imaging
 
 > Hennes Rave, **MIA: Multiscale Image Analysis**, 2025. https://github.com/hennesrave/multiscale-image-analysis
 
-## Examples
-![Teaser Image](./images/teaser.png)
-##### Data Courtesy by Katharina Kronenberg, University of Graz. [[Paper]](https://chemrxiv.org/engage/chemrxiv/article-details/650d598eed7d0eccc301cd03)
-
 ## Build instructions
 - Install [Qt](https://www.qt.io/) version 6.9.1 and [Qt Visual Studio Tools](https://marketplace.visualstudio.com/items?itemName=TheQtCompany.QtVisualStudioTools2022) 
 - Install [Python 3.13.5](https://www.python.org/downloads/release/python-3135/) and copy `Python313/include/` and `Python313/libs/` to `external/Python313/`
@@ -29,5 +25,6 @@ This project uses third-party libraries and tools under the following licenses:
 - **RenderDoc** — [MIT License](https://github.com/baldurk/renderdoc/blob/v1.x/LICENSE.md)  
 - **spdlog** — [MIT License](https://github.com/gabime/spdlog/blob/v1.x/LICENSE)
 - **nlohmann/json.hpp** — [MIT License](https://github.com/nlohmann/json/blob/develop/LICENSE.MIT)
+- **Google Material icons** — [Apache License Version 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt)
 
 For full license details, please refer to the official repositories of these components.
