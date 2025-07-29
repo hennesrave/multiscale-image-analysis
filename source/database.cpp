@@ -120,7 +120,7 @@ void Database::populate_segmentation_menu( QMenu& context_menu )
     segmentation_menu->addAction( "Manage", [this] { SegmentationManager::execute( *this ); } );
     segmentation_menu->addAction( "Import", [this]
     {
-        const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "JSON Files (*.json)" );
+        const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "JSON Files (*.json)", nullptr, QFileDialog::DontUseNativeDialog );
         if( !filepath.isEmpty() )
         {
             auto file = QFile { filepath };
@@ -138,7 +138,7 @@ void Database::populate_segmentation_menu( QMenu& context_menu )
     } );
     segmentation_menu->addAction( "Export", [this]
     {
-        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Segmentation", "", "JSON Files (*.json)" );
+        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Segmentation", "", "JSON Files (*.json)", nullptr, QFileDialog::DontUseNativeDialog );
         if( !filepath.isEmpty() )
         {
             auto file = QFile { filepath };

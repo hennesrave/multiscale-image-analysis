@@ -515,7 +515,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
 
                 context_menu.addSeparator();
                 context_menu.addAction( "Create Embedding", [this] { this->import_embedding( EmbeddingCreator::execute( _database.dataset(), _database.segmentation() ) ); } );
-                context_menu.addAction( "Import Embedding", [this] { this->import_embedding( QFileDialog::getOpenFileName( this, "Import Embedding...", QString(), "*.csv" ) ); } );
+                context_menu.addAction( "Import Embedding", [this] { this->import_embedding( QFileDialog::getOpenFileName( this, "Import Embedding...", QString(), "*.csv", nullptr, QFileDialog::DontUseNativeDialog ) ); } );
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );
@@ -683,7 +683,7 @@ void EmbeddingViewer::import_embedding( const QString& filepath )
 }
 void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
 {
-    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png" );
+    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png", nullptr, QFileDialog::DontUseNativeDialog );
 
     if( !filepath.isEmpty() )
     {

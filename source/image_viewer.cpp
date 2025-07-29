@@ -377,7 +377,7 @@ void ImageViewer::reset_image_rectangle()
 }
 void ImageViewer::create_screenshot( uint32_t scaling ) const
 {
-    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png" );
+    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png", nullptr, QFileDialog::DontUseNativeDialog );
 
     if( !filepath.isEmpty() )
     {
@@ -430,7 +430,7 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
 }
 void ImageViewer::export_columns() const
 {
-    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Columns...", "", "*.csv" );
+    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Columns...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog );
     if( !filepath.isEmpty() )
     {
         auto file = QFile { filepath };
@@ -469,7 +469,7 @@ void ImageViewer::export_columns() const
 }
 void ImageViewer::export_matrix() const
 {
-    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Matrix...", "", "*.csv" );
+    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Matrix...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog );
     if( !filepath.isEmpty() )
     {
         auto file = QFile { filepath };

@@ -284,7 +284,7 @@ void BoxplotViewer::on_feature_extremes_changed()
 }
 void BoxplotViewer::export_boxplots() const
 {
-    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Boxplots...", "", "*.csv" );
+    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Boxplots...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog );
     if( !filepath.isEmpty() )
     {
         auto file = QFile { filepath };

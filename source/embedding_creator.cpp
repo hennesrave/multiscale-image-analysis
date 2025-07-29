@@ -159,7 +159,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
 
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath]
     {
-        filepath->setText( QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", "*.csv" ) );
+        filepath->setText( QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog ) );
     } );
 
     QObject::connect( button_create, &QPushButton::clicked, [=] ()
