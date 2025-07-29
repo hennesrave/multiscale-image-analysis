@@ -371,37 +371,38 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
     {
         auto menu = QMenu {};
 
-        if( auto feature = _hovered_feature.feature.lock() )
+        if( auto feature = _hovered_feature.feature.lock(); feature && feature->channel_range().x != feature->channel_range().y )
         {
-            auto reduction_menu = menu.addMenu( "Reduction" );
+            auto properties_menu  = menu.addMenu( "Feature Properties" );
 
-            auto reduction_mode_accumulate = reduction_menu->addAction( "Accumulate", [feature] { feature->update_reduction( DatasetChannelsFeature::Reduction::eAccumulate ); } );
+            auto reduction_mode_accumulate = properties_menu->addAction( "Accumulate", [feature] { feature->update_reduction( DatasetChannelsFeature::Reduction::eAccumulate ); } );
             reduction_mode_accumulate->setCheckable( true );
             reduction_mode_accumulate->setChecked( feature->reduction() == DatasetChannelsFeature::Reduction::eAccumulate );
 
-            auto recution_mode_integrate = reduction_menu->addAction( "Integrate", [feature] { feature->update_reduction( DatasetChannelsFeature::Reduction::eIntegrate ); } );
+            auto recution_mode_integrate = properties_menu->addAction( "Integrate", [feature] { feature->update_reduction( DatasetChannelsFeature::Reduction::eIntegrate ); } );
             recution_mode_integrate->setCheckable( true );
             recution_mode_integrate->setChecked( feature->reduction() == DatasetChannelsFeature::Reduction::eIntegrate );
 
-            auto reduction_action_group = new QActionGroup { reduction_menu };
+            auto reduction_action_group = new QActionGroup { properties_menu };
             reduction_action_group->setExclusive( true );
             reduction_action_group->addAction( reduction_mode_accumulate );
             reduction_action_group->addAction( recution_mode_integrate );
 
-            auto baseline_correction_menu = menu.addMenu( "Baseline Correction" );
-            auto baseline_correction_none = baseline_correction_menu->addAction( "None", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eNone ); } );
+            properties_menu->addSeparator();
+
+            auto baseline_correction_none = properties_menu->addAction( "From Zero (No Correction)", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eNone ); } );
             baseline_correction_none->setCheckable( true );
             baseline_correction_none->setChecked( feature->baseline_correction() == DatasetChannelsFeature::BaselineCorrection::eNone );
 
-            auto baseline_correction_minimum = baseline_correction_menu->addAction( "Minimum", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eMinimum ); } );
+            auto baseline_correction_minimum = properties_menu->addAction( "From Minimum", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eMinimum ); } );
             baseline_correction_minimum->setCheckable( true );
             baseline_correction_minimum->setChecked( feature->baseline_correction() == DatasetChannelsFeature::BaselineCorrection::eMinimum );
 
-            auto baseline_correction_linear = baseline_correction_menu->addAction( "Linear", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eLinear ); } );
+            auto baseline_correction_linear = properties_menu->addAction( "From Linear Baseline", [feature] { feature->update_baseline_correction( DatasetChannelsFeature::BaselineCorrection::eLinear ); } );
             baseline_correction_linear->setCheckable( true );
             baseline_correction_linear->setChecked( feature->baseline_correction() == DatasetChannelsFeature::BaselineCorrection::eLinear );
 
-            auto baseline_correction_action_group = new QActionGroup { baseline_correction_menu };
+            auto baseline_correction_action_group = new QActionGroup { properties_menu };
             baseline_correction_action_group->setExclusive( true );
             baseline_correction_action_group->addAction( baseline_correction_none );
             baseline_correction_action_group->addAction( baseline_correction_minimum );
@@ -454,9 +455,12 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         }
 
         menu.addAction( "Reset View", [this] { this->reset_view(); } );
+        menu.addAction( "Export", [this] { this->export_spectra(); } );
         menu.addSeparator();
 
-        auto baseline_correction_menu = menu.addMenu( "Baseline Correction" );
+        auto dataset_menu = menu.addMenu( "Dataset" );
+
+        auto baseline_correction_menu = dataset_menu->addMenu( "Baseline Correction" );
         baseline_correction_menu->addAction( "Minimum", [this]
         {
             const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
@@ -474,9 +478,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             }
         } );
 
-        auto export_menu = menu.addMenu( "Export" );
-        export_menu->addAction( "Spectra", [this] { this->export_spectra(); } );
-        export_menu->addAction( "Dataset", [this] { this->export_dataset(); } );
+        dataset_menu->addAction( "Export", [this] { this->export_dataset(); } );
 
         menu.exec( event->globalPosition().toPoint() );
 
