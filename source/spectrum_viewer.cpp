@@ -174,20 +174,30 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
                 ymaximum = std::max( ymaximum, yscreen );
             }
 
-            painter.setPen( QPen { QBrush { config::palette[300] }, 1.0 } );
+            painter.setPen( QPen { QBrush { config::palette[300] }, 0.5 } );
             painter.drawLine( QPointF { polyline[channel_index].x(), yminimum }, QPointF { polyline[channel_index].x(), ymaximum } );
         }
+    }
+
+    // Render highlighted channel
+    if( highlighted_channel_index.has_value() )
+    {
+        const auto channel_index = *highlighted_channel_index;
+
+        const auto xscreen = this->world_to_screen_x( dataset->channel_position( channel_index ) );
+        painter.setPen( QPen { QBrush { config::palette[500] }, 2.0, Qt::DashLine } );
+        painter.drawLine( QPointF { xscreen, static_cast<qreal>( content_rectangle.bottom() ) }, QPointF { xscreen, static_cast<qreal>( content_rectangle.top() ) } );
     }
 
     // Render features
     for( const auto object : *_database.features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
     {
-        const auto color = QColor { ( feature == _selected_feature.feature ) ? config::palette[900] : config::palette[400] };
+        const auto color = QColor { ( feature == _selected_feature.feature ) ? config::palette[900] : config::palette[500] };
         const auto channel_range = feature->channel_range();
         if( channel_range.x == channel_range.y )
         {
             const auto xscreen = this->world_to_screen_x( dataset->channel_position( channel_range.x ) );
-            painter.setPen( QPen { QBrush { color }, 1.0 } );
+            painter.setPen( QPen { QBrush { color }, 2.0 } );
             painter.drawLine( QPointF { xscreen, static_cast<qreal>( content_rectangle.bottom() ) }, QPointF { xscreen, static_cast<qreal>( content_rectangle.top() ) } );
         }
         else
@@ -200,20 +210,10 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
             rectangle_color.setAlpha( 20 );
             painter.fillRect( rectangle, rectangle_color );
 
-            painter.setPen( QPen { QBrush { color }, 1.0 } );
+            painter.setPen( QPen { QBrush { color }, 2.0 } );
             painter.drawLine( QPointF { xscreen_lower, static_cast<qreal>( content_rectangle.bottom() ) }, QPointF { xscreen_lower, static_cast<qreal>( content_rectangle.top() ) } );
             painter.drawLine( QPointF { xscreen_upper, static_cast<qreal>( content_rectangle.bottom() ) }, QPointF { xscreen_upper, static_cast<qreal>( content_rectangle.top() ) } );
         }
-    }
-
-    // Render highlighted channel
-    if( highlighted_channel_index.has_value() )
-    {
-        const auto channel_index = *highlighted_channel_index;
-
-        const auto xscreen = this->world_to_screen_x( dataset->channel_position( channel_index ) );
-        painter.setPen( QPen { QBrush { config::palette[400] }, 1.0, Qt::DashLine } );
-        painter.drawLine( QPointF { xscreen, static_cast<qreal>( content_rectangle.bottom() ) }, QPointF { xscreen, static_cast<qreal>( content_rectangle.top() ) } );
     }
 
     // Render spectra or lollipop handles
