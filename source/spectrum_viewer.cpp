@@ -681,7 +681,7 @@ void SpectrumViewer::export_spectra() const
         const auto dataset = _database.dataset();
         for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
         {
-            stream << ',' << dataset->channel_identifier(channel_index);
+            stream << ',' << dataset->channel_identifier( channel_index );
         }
         stream << '\n';
 
@@ -716,31 +716,28 @@ void SpectrumViewer::export_dataset() const
     const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia" );
     if( !filepath.isEmpty() )
     {
-        auto file = QFile { filepath };
-        if( !file.open( QFile::WriteOnly ) )
+        auto stream = MIAFileStream {};
+        if( !stream.open( filepath.toUtf8().constData(), std::ios::out ) )
         {
             QMessageBox::critical( nullptr, "", "Failed to open file" );
             return;
         }
 
-        auto stream = QDataStream { &file };
-        stream << config::application_version;
+        stream.write( std::string { "Dataset[SpatialMetadata]" } );
 
         const auto dataset = _database.dataset();
-        stream << dataset->element_count() << dataset->channel_count();
-
-        const auto spatial_metadata = dataset->spatial_metadata();
-        stream.writeRawData( reinterpret_cast<const char*>( spatial_metadata ), sizeof( Dataset::SpatialMetadata ) );
-
-        stream << dataset->base_type();
+        stream.write( dataset->element_count() );
+        stream.write( dataset->channel_count() );
+        stream.write( *dataset->spatial_metadata() );
+        stream.write( dataset->basetype() );
 
         dataset->visit( [&stream] ( const auto& dataset )
         {
             const auto& channel_positions = dataset.channel_positions();
-            stream.writeRawData( reinterpret_cast<const char*>( channel_positions.data() ), channel_positions.bytes() );
+            stream.write( channel_positions.data(), channel_positions.bytes() );
 
             const auto& intensities = dataset.intensities();
-            stream.writeRawData( reinterpret_cast<const char*>( intensities.data() ), intensities.bytes() );
+            stream.write( intensities.data(), intensities.bytes() );
         } );
     }
 }

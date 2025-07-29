@@ -540,76 +540,74 @@ QSharedPointer<Dataset> DatasetImporter::execute()
         }
         else if( suffix == "mia" )
         {
-            auto file = QFile { filepath };
-            if( !file.open( QFile::ReadOnly ) )
+            auto stream = MIAFileStream {};
+            if( !stream.open( filepath.toUtf8().constData(), std::ios::in ) )
             {
-                QMessageBox::critical( nullptr, "", "Failed to open file.", QMessageBox::Ok );
+                QMessageBox::critical( nullptr, "", "Failed to open file" );
                 return nullptr;
             }
 
-            auto stream = QDataStream { &file };
+            const auto identifier = stream.read<std::string>();
+            if( identifier != "Dataset[SpatialMetadata]" )
+            {
+                QMessageBox::critical( nullptr, "", "Invalid dataset file format: " + QString::fromStdString( identifier ), QMessageBox::Ok );
+                return nullptr;
+            }
 
-            uint64_t version;
-            stream >> version;
-
-            uint32_t element_count, channel_count;
-            stream >> element_count >> channel_count;
-
-            Dataset::SpatialMetadata spatial_metadata;
-            stream.readRawData( reinterpret_cast<char*>( &spatial_metadata ), sizeof( Dataset::SpatialMetadata ) );
-
-            Dataset::BaseType base_type;
-            stream >> base_type;
+            const auto element_count = stream.read<uint32_t>();
+            const auto channel_count = stream.read<uint32_t>();
+            const auto spatial_metadata = stream.read<Dataset::SpatialMetadata>();
+            const auto base_type = stream.read<Dataset::Basetype>();
 
             auto channel_positions = Array<double>::allocate( channel_count );
-            stream.readRawData( reinterpret_cast<char*>( channel_positions.data() ), channel_positions.bytes() );
+            stream.read( channel_positions.data(), channel_positions.bytes() );
 
-            if( base_type == Dataset::BaseType::eInt8 )
+            if( base_type == Dataset::Basetype::eInt8 )
             {
                 auto intensities = Matrix<int8_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<int8_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eInt16 )
+            else if( base_type == Dataset::Basetype::eInt16 )
             {
                 auto intensities = Matrix<int16_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<int16_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eInt32 )
+            else if( base_type == Dataset::Basetype::eInt32 )
             {
                 auto intensities = Matrix<int32_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<int32_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eUint8 )
+            else if( base_type == Dataset::Basetype::eUint8 )
             {
                 auto intensities = Matrix<uint8_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<uint8_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eUint16 )
+            else if( base_type == Dataset::Basetype::eUint16 )
             {
                 auto intensities = Matrix<uint16_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<uint16_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eUint32 )
+            else if( base_type == Dataset::Basetype::eUint32 )
             {
                 auto intensities = Matrix<uint32_t>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<uint32_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eFloat )
+            else if( base_type == Dataset::Basetype::eFloat )
             {
                 auto intensities = Matrix<float>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<float> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
-            else if( base_type == Dataset::BaseType::eDouble )
+            else if( base_type == Dataset::Basetype::eDouble )
             {
                 auto intensities = Matrix<double>::allocate( { element_count, channel_count } );
-                stream.readRawData( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+                stream.read( intensities.data(), intensities.bytes() );
                 dataset.reset( new TensorDataset<double> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
             }
             else
