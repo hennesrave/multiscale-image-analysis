@@ -277,7 +277,7 @@ void HistogramViewer::export_histograms() const
         const auto precision = utility::stepsize_to_precision( edges[1] - edges[0] ) + 1;
         for( uint32_t bin = 0; bin < this->bincount(); ++bin )
         {
-            stream << "," << QString::number( edges[bin], 'f', precision ) << " - " << QString::number( edges[bin + 1], 'f', precision );
+            stream << "," << QString::number( edges[bin], 'f', precision ) << " to " << QString::number( edges[bin + 1], 'f', precision );
         }
         stream << '\n';
 
