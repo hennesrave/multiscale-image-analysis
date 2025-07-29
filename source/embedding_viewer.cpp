@@ -514,8 +514,16 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.addAction( "Reset View", [this] { this->reset_projection_matrix(); } );
 
                 context_menu.addSeparator();
-                context_menu.addAction( "Create Embedding", [this] { this->import_embedding( EmbeddingCreator::execute( _database.dataset(), _database.segmentation() ) ); } );
-                context_menu.addAction( "Import Embedding", [this] { this->import_embedding( QFileDialog::getOpenFileName( this, "Import Embedding...", QString(), "*.csv", nullptr, QFileDialog::DontUseNativeDialog ) ); } );
+                context_menu.addAction( "Create Embedding", [this]
+                {
+                    this->import_embedding( EmbeddingCreator::execute( _database.dataset(), _database.segmentation() ) );
+                } );
+                context_menu.addAction( "Import Embedding", [this]
+                {
+                    auto selected_filter = QString { "*.mia" };
+                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter, QFileDialog::DontUseNativeDialog );
+                    this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
+                } );
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );
@@ -645,41 +653,74 @@ void EmbeddingViewer::reset_projection_matrix()
     _scatterplot_image_valid = false;
     this->update();
 }
-void EmbeddingViewer::import_embedding( const QString& filepath )
+void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
 {
-    if( !filepath.isEmpty() )
+    if( filepath.empty() )
     {
-        auto file = QFile { filepath };
-        if( !file.open( QFile::ReadOnly | QFile::Text ) )
+        return;
+    }
+
+    const auto extension = filepath.extension();
+    if( extension == ".csv" )
+    {
+        auto stream = std::ifstream { filepath };
+        if( !stream )
         {
-            QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
+            QMessageBox::critical( this, "Import Embedding...", "Failed to open file." );
             return;
         }
 
-        _point_positions.clear();
-        _point_indices.clear();
-
-        auto stream = QTextStream { &file };
-        while( !stream.atEnd() )
+        while( stream )
         {
-            const auto line = stream.readLine();
-            const auto values = line.split( ',' );
-            if( values.size() == 3 )
-            {
-                _point_indices.push_back( static_cast<uint32_t>( values[0].toUInt() ) );
-                _point_positions.push_back( vec2<float> { values[1].toFloat(), values[2].toFloat() } );
-            }
-            else
-            {
-                Console::warning( std::format( "Invalid line in embedding file: {}", line.toStdString() ) );
-            }
+            std::string line;
+            std::getline( stream, line );
+            if( line.empty() ) continue;
+
+            auto stringstream = std::stringstream { line };
+
+            uint32_t index;
+            ( stringstream >> index ).ignore( 1 );
+
+            float x, y;
+            ( stringstream >> x ).ignore( 1 );
+            ( stringstream >> y ).ignore( 1 );
+
+            _point_indices.push_back( index );
+            _point_positions.push_back( vec2<float> { x, y } );
+        }
+    }
+    else if( extension == ".mia" )
+    {
+        auto stream = MIAFileStream {};
+        if( !stream.open( filepath, std::ios::in ) )
+        {
+            QMessageBox::critical( this, "Import Embedding...", "Failed to open file." );
+            return;
         }
 
-        _search_tree.reset( new SearchTree( _point_positions ) );
-        _renderer->update_points( _point_positions, _point_indices );
-        _scatterplot_image_valid = false;
-        this->update();
+        const auto identifier = stream.read<std::string>();
+        if( identifier != "Embedding" )
+        {
+            QMessageBox::critical( this, "Import Embedding...", "Invalid embedding file." );
+            return;
+        }
+
+        const auto element_count = stream.read<uint32_t>();
+        _point_indices.resize( element_count );
+        _point_positions.resize( element_count );
+
+        stream.read( _point_indices.data(), element_count * sizeof( uint32_t ) );
+        stream.read( _point_positions.data(), element_count * sizeof( vec2<float> ) );
     }
+    else
+    {
+        QMessageBox::critical( this, "Import Embedding...", "Unsupported file format: " + QString::fromStdString( extension.string() ) );
+    }
+
+    _search_tree.reset( new SearchTree { _point_positions } );
+    _renderer->update_points( _point_positions, _point_indices );
+    _scatterplot_image_valid = false;
+    this->update();
 }
 void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
 {

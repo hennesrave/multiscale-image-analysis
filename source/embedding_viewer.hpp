@@ -127,7 +127,7 @@ public:
 private:
 	void segmentation_changed();
 	void reset_projection_matrix();
-	void import_embedding( const QString& filepath );
+	void import_embedding( const std::filesystem::path& filepath );
 	void create_screenshot( uint32_t scaling ) const;
 
 	Database& _database;

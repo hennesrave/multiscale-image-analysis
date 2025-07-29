@@ -550,7 +550,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
             const auto identifier = stream.read<std::string>();
             if( identifier != "Dataset[SpatialMetadata]" )
             {
-                QMessageBox::critical( nullptr, "", "Invalid dataset file format: " + QString::fromStdString( identifier ), QMessageBox::Ok );
+                QMessageBox::critical( nullptr, "", "Invalid dataset file.", QMessageBox::Ok );
                 return nullptr;
             }
 

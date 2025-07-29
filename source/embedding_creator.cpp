@@ -17,14 +17,14 @@
 #include <qstackedwidget.h>
 #include <qtoolbutton.h>
 
-QString EmbeddingCreator::execute( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation )
+std::filesystem::path EmbeddingCreator::execute( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation )
 {
     auto embedding_creator = EmbeddingCreator { dataset, segmentation };
     if( embedding_creator.exec() == QDialog::Accepted )
     {
         return embedding_creator.filepath();
     }
-    return QString {};
+    return std::filesystem::path {};
 }
 
 EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation ) : QDialog {}, _dataset { dataset }, _segmentation { segmentation }
@@ -54,12 +54,12 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
     normalization->addItem( "Min-Max" );
     normalization->addItem( "None" );
 
-    auto filepath = new QLabel {};
-    filepath->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
-    filepath->setTextInteractionFlags( Qt::TextSelectableByMouse );
-    filepath->setStyleSheet( "QLabel { background: #fafafa; border-radius: 3px; }" );
-    filepath->setMaximumWidth( 300 );
-    filepath->setContentsMargins( 5, 3, 5, 3 );
+    auto filepath_label = new QLabel {};
+    filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
+    filepath_label->setTextInteractionFlags( Qt::TextSelectableByMouse );
+    filepath_label->setStyleSheet( "QLabel { background: #fafafa; border-radius: 3px; }" );
+    filepath_label->setMaximumWidth( 300 );
+    filepath_label->setContentsMargins( 5, 3, 5, 3 );
 
     auto filepath_button = new QToolButton {};
     filepath_button->setIcon( QIcon { ":/edit.svg" } );
@@ -68,7 +68,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
     auto filepath_layout = new QHBoxLayout {};
     filepath_layout->setContentsMargins( 0, 0, 0, 0 );
     filepath_layout->setSpacing( 10 );
-    filepath_layout->addWidget( filepath, 1 );
+    filepath_layout->addWidget( filepath_label, 1 );
     filepath_layout->addWidget( filepath_button );
 
     auto algorithm = new QComboBox {};
@@ -157,14 +157,37 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
     QObject::connect( channels_select_all, &QPushButton::clicked, channels, &QListWidget::selectAll );
     QObject::connect( channels_deselect_all, &QPushButton::clicked, channels, &QListWidget::clearSelection );
 
-    QObject::connect( filepath_button, &QToolButton::clicked, [filepath]
+    QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
     {
-        filepath->setText( QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog ) );
+        const auto filters = QStringList { "*.csv", "*.mia" };
+        const auto filters_string = filters.join( ";;" );
+        auto selected_filter = QString { "*.mia" };
+        auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter, QFileDialog::DontUseNativeDialog );
+
+        if( !filepath.isEmpty() )
+        {
+            auto valid_extension = false;
+            for( const auto& filter : filters )
+            {
+                if( filepath.endsWith( filter.section( '.', 1 ) ) )
+                {
+                    valid_extension = true;
+                    break;
+                }
+            }
+
+            if( !valid_extension )
+            {
+                filepath += '.' + selected_filter.section( '.', 1 );
+            }
+        }
+
+        filepath_label->setText( filepath );
     } );
 
     QObject::connect( button_create, &QPushButton::clicked, [=] ()
     {
-        if( filepath->text().isEmpty() )
+        if( filepath_label->text().isEmpty() )
         {
             QMessageBox::warning( nullptr, "Create Embedding...", "Please select a valid filepath." );
             return;
@@ -209,7 +232,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
             "segment_number"_a = segment_number,
             "channel_indices"_a = channel_indices,
             "normalization"_a = normalization->currentText().toStdString(),
-            "filepath"_a = filepath->text().toStdString(),
+            "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
             "error"_a = std::string {},
 
@@ -236,7 +259,7 @@ try:
     segmentation    = np.asarray( segmentation, copy=False )
     print( f"[Embedding] Dataset:           ({dataset.shape}, {dataset.dtype}), Segmentation: ({segmentation.shape}, {segmentation.dtype}) " )
 
-    element_indices     = (np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] )).flatten()
+    element_indices     = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
     channel_indices     = np.array( channel_indices, dtype=np.int64 )
     filtered_dataset    = dataset[np.ix_(element_indices, channel_indices)].copy()
     print( f"[Embedding] Filtered dataset:  ({dataset.shape}, {dataset.dtype}) " )
@@ -301,13 +324,7 @@ try:
     print( f"[Embedding] Finished computing embedding: {embedding.shape}" )
     embedding = embedding - np.mean( embedding, axis=0 )
     embedding = embedding / np.max( np.abs( embedding ) )
-                        
-    with open( filepath, "w", newline='' ) as file:
-        writer = csv.writer( file )
-                            
-        for index, element_index in enumerate( element_indices ):                            
-            writer.writerow([element_index, embedding[index, 0], embedding[index, 1]])
-    print( f"[Embedding] Finished writing result: {filepath}" )
+
 except Exception as exception:
     error = str( exception ))", py::globals(), locals );
         }
@@ -318,7 +335,52 @@ except Exception as exception:
 
         if( const auto error = locals["error"].cast<std::string>(); error.empty() )
         {
-            _filepath = filepath->text();
+            const auto filepath = std::filesystem::path { filepath_label->text().toStdWString() };
+            const auto extension = filepath.extension();
+            if( extension == ".csv" )
+            {
+                auto stream = std::ofstream { filepath, std::ios::out };
+                if( !stream )
+                {
+                    QMessageBox::critical( nullptr, "Create Embedding...", "Failed to open output file.", QMessageBox::Ok );
+                    this->reject();
+                    return;
+                }
+
+                const auto element_indices = locals["element_indices"].cast<py::array_t<uint32_t>>();
+                const auto embedding = locals["embedding"].cast<py::array_t<float>>();
+
+                for( py::ssize_t i = 0; i < element_indices.size(); ++i )
+                {
+                    stream << element_indices.at( i ) << ',' << embedding.at( i, 0 ) << ',' << embedding.at( i, 1 ) << '\n';
+                }
+            }
+            else if( extension == ".mia" )
+            {
+                auto stream = MIAFileStream {};
+                if( !stream.open( filepath, std::ios::out ) )
+                {
+                    QMessageBox::critical( nullptr, "Create Embedding...", "Failed to open output file.", QMessageBox::Ok );
+                    this->reject();
+                    return;
+                }
+
+                const auto element_indices = locals["element_indices"].cast<py::array_t<uint32_t>>();
+                const auto embedding = locals["embedding"].cast<py::array_t<float>>();
+
+                stream.write( std::string { "Embedding" } );
+                stream.write( static_cast<uint32_t>( element_indices.size() ) );
+                stream.write( element_indices.data(), element_indices.nbytes() );
+                stream.write( embedding.data(), embedding.nbytes() );
+            }
+            else
+            {
+                QMessageBox::critical( nullptr, "Create Embedding...", "Unsupported file format.", QMessageBox::Ok );
+                this->reject();
+                return;
+            }
+
+            _filepath = filepath;
             this->accept();
         }
         else
@@ -330,7 +392,7 @@ except Exception as exception:
     } );
 }
 
-const QString& EmbeddingCreator::filepath() const noexcept
+const std::filesystem::path& EmbeddingCreator::filepath() const noexcept
 {
     return _filepath;
 }
