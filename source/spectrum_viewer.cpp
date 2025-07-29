@@ -704,7 +704,7 @@ void SpectrumViewer::export_spectra() const
         write_statistics( "Dataset", dataset->element_count(), statistics );
 
         const auto& segmentation_statistics = dataset->segmentation_statistics( _database.segmentation() );
-        for( uint32_t segment_number = 0; segment_number < _database.segmentation()->segment_count(); ++segment_number )
+        for( uint32_t segment_number = 1; segment_number < _database.segmentation()->segment_count(); ++segment_number )
         {
             const auto& segment = _database.segmentation()->segment( segment_number );
             write_statistics( segment->identifier(), segment->element_count(), segmentation_statistics[segment_number] );
