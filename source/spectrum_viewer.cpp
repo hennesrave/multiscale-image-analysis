@@ -463,7 +463,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         auto baseline_correction_menu = dataset_menu->addMenu( "Baseline Correction" );
         baseline_correction_menu->addAction( "Minimum", [this]
         {
-            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a baseline correction (minimum) to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
             if( answer == QMessageBox::Yes )
             {
                 _database.dataset()->apply_baseline_correction_minimum();
@@ -471,7 +471,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         } );
         baseline_correction_menu->addAction( "Linear", [this]
         {
-            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a linear baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a baseline correction (linear) to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
             if( answer == QMessageBox::Yes )
             {
                 _database.dataset()->apply_baseline_correction_linear();
