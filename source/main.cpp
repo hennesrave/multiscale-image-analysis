@@ -48,6 +48,7 @@ int main( int argc, char** argv )
         py::interpreter::python_home + L"\\python313.zip",
         py::interpreter::python_home + L"\\Lib\\site-packages"
     };
+    py::interpreter::initialize();
 
     // Initialize workspace
     if( const auto dataset = DatasetImporter::execute() )

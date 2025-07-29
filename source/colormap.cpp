@@ -438,13 +438,13 @@ const ColormapTemplate ColormapTemplate::tab10 { std::vector<ColormapTemplate::N
 } };
 
 const std::vector<std::pair<const char*, const ColormapTemplate&>> ColormapTemplate::registry {
-    { "Gray \u2605", ColormapTemplate::gray },
+    { "Gray", ColormapTemplate::gray },
     { "Red", ColormapTemplate::red },
     { "Green", ColormapTemplate::green },
     { "Blue", ColormapTemplate::blue },
     { "Viridis \u2605", ColormapTemplate::viridis },
-    { "Inferno", ColormapTemplate::inferno },
-    { "Plasma", ColormapTemplate::plasma },
+    { "Inferno \u2605", ColormapTemplate::inferno },
+    { "Plasma \u2605", ColormapTemplate::plasma },
     { "Turbo", ColormapTemplate::turbo },
     { "Rainbow", ColormapTemplate::rainbow },
     { "Coolwarm \u2605", ColormapTemplate::coolwarm },

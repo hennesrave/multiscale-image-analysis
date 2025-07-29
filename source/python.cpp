@@ -3,6 +3,7 @@
 #include "utility.hpp"
 
 #include <filesystem>
+#include <qmessagebox.h>
 
 namespace pybind11
 {
@@ -20,39 +21,46 @@ namespace pybind11
         return &configuration;
     }
 
-    interpreter::interpreter()
+    void interpreter::initialize()
     {
-        if( !_interpreter )
+        const auto libraries_directory = interpreter::python_home + L"/Lib";
+        if( !std::filesystem::is_directory( libraries_directory ) )
         {
-            Console::info( std::format( "Python home: {}", interpreter::python_home ) );
+            Console::info( "Installing python package dependencies..." );
+            QMessageBox::information(
+                nullptr,
+                config::application_display_name,
+                "The application needs to install some Python dependencies.\nThis is a one-time setup and may take a few minutes.",
+                QMessageBox::Ok
+            );
 
-            const auto libraries_directory = interpreter::python_home + L"/Lib";
-            if( !std::filesystem::is_directory( libraries_directory ) )
+            try
             {
-                Console::info( std::format( "Python libraries directory does not exist: {}", libraries_directory ) );
-                Console::info( "Creating python libraries directory..." );
-
-                try
-                {
-                    using namespace py::literals;
-                    auto interpreter = py::scoped_interpreter { py::configuration(), 0, nullptr, false };
-                    py::exec( R"(
+                using namespace py::literals;
+                auto interpreter = py::scoped_interpreter { py::configuration(), 0, nullptr, false };
+                py::exec( R"(
                         import subprocess
                         subprocess.run( [f"{python_home}/python.exe", f"{python_home}/get-pip.py"] )
                         subprocess.run( [f"{python_home}/python.exe", "-m", "pip", "install", "--requirement", f"{python_home}/requirements.txt"] )
                     )", py::globals(), py::dict { "python_home"_a = interpreter::python_home } );
-                }
-                catch( const py::error_already_set& error )
-                {
-                    Console::critical( std::format( "Python error during package installation: {}", error.what() ) );
-                }
-
-                Console::info( "Finished installing python package requirements!" );
+            }
+            catch( const py::error_already_set& error )
+            {
+                Console::critical( std::format( "Python error during package installation: {}", error.what() ) );
             }
 
-            _interpreter.reset( new py::scoped_interpreter { py::configuration(), 0, nullptr, false } );
-            Console::info( "Finished initializing global python interpreter!" );
+            Console::info( "Finished installing python package dependencies!" );
+            QMessageBox::information(
+                nullptr,
+                config::application_display_name,
+                "Python package dependencies have been installed successfully.\nPlease restart the application to apply the changes.",
+                QMessageBox::Ok
+            );
+            std::exit( 0 );
         }
+
+        _interpreter.reset( new py::scoped_interpreter { py::configuration(), 0, nullptr, false } );
+        Console::info( "Finished initializing global python interpreter!" );
     }
 
     interpreter::~interpreter()

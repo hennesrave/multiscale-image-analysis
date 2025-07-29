@@ -90,6 +90,6 @@ Workspace::Workspace( Database& database ) : _database { database }
         DatasetChannelsFeature::BaselineCorrection::eNone
     } };
 
-    _database.colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::viridis.clone() ) );
+    _database.colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::turbo.clone() ) );
     _database.features()->append( feature );
 }
