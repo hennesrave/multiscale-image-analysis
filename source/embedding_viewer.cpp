@@ -516,7 +516,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.addSeparator();
                 context_menu.addAction( "Create Embedding", [this]
                 {
-                    this->import_embedding( EmbeddingCreator::execute( _database.dataset(), _database.segmentation() ) );
+                    this->import_embedding( EmbeddingCreator::execute( _database ) );
                 } );
                 context_menu.addAction( "Import Embedding", [this]
                 {

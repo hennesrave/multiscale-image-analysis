@@ -1,9 +1,8 @@
 #include "embedding_creator.hpp"
 
-#include "dataset.hpp"
+#include "database.hpp"
 #include "python.hpp"
 #include "segment_selector.hpp"
-#include "segmentation.hpp"
 
 #include <qcombobox.h>
 #include <qfiledialog.h>
@@ -17,9 +16,9 @@
 #include <qstackedwidget.h>
 #include <qtoolbutton.h>
 
-std::filesystem::path EmbeddingCreator::execute( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation )
+std::filesystem::path EmbeddingCreator::execute( const Database& database )
 {
-    auto embedding_creator = EmbeddingCreator { dataset, segmentation };
+    auto embedding_creator = EmbeddingCreator { database };
     if( embedding_creator.exec() == QDialog::Accepted )
     {
         return embedding_creator.filepath();
@@ -27,9 +26,13 @@ std::filesystem::path EmbeddingCreator::execute( QSharedPointer<const Dataset> d
     return std::filesystem::path {};
 }
 
-EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation ) : QDialog {}, _dataset { dataset }, _segmentation { segmentation }
+EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _database { database }
 {
+    const auto dataset = _database.dataset();
+    const auto segmentation = _database.segmentation();
+
     this->setWindowTitle( "Create Embedding..." );
+    this->setStyleSheet( "QPushButton { padding: 2px 5px 2px 5px; }" );
 
     // Initialize general properties
     auto segment_selector = new SegmentSelector { segmentation };
@@ -42,12 +45,14 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
 
     auto channels_select_all = new QPushButton { "Select All" };
     auto channels_deselect_all = new QPushButton { "Deselect All" };
+    auto channels_select_from_features = new QPushButton { "Select from Features" };
 
     auto channels_select_layout = new QHBoxLayout {};
     channels_select_layout->setContentsMargins( 0, 0, 0, 0 );
-    channels_select_layout->setSpacing( 10 );
+    channels_select_layout->setSpacing( 5 );
     channels_select_layout->addWidget( channels_select_all );
     channels_select_layout->addWidget( channels_deselect_all );
+    channels_select_layout->addWidget( channels_select_from_features );
 
     auto normalization = new QComboBox {};
     normalization->addItem( "Z-score" );
@@ -88,7 +93,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
 
     // Initialize UMAP properties
     auto umap_neighbors = new QSpinBox {};
-    umap_neighbors->setRange( 2, static_cast<int>( _dataset->element_count() - 1 ) );
+    umap_neighbors->setRange( 2, static_cast<int>( dataset->element_count() - 1 ) );
     umap_neighbors->setValue( 15 );
 
     auto umap_minimum_distance = new QDoubleSpinBox {};
@@ -156,6 +161,21 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
     QObject::connect( algorithm, &QComboBox::currentIndexChanged, algorithm_properties, &QStackedWidget::setCurrentIndex );
     QObject::connect( channels_select_all, &QPushButton::clicked, channels, &QListWidget::selectAll );
     QObject::connect( channels_deselect_all, &QPushButton::clicked, channels, &QListWidget::clearSelection );
+    QObject::connect( channels_select_from_features, &QPushButton::clicked, [this, channels]
+    {
+        channels->clearSelection();
+        for( const auto object : *_database.features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
+        {
+            const auto channel_range = feature->channel_range();
+            for( uint32_t channel_index = channel_range.x; channel_index <= channel_range.y; ++channel_index )
+            {
+                if( auto item = channels->item( static_cast<int>( channel_index ) ) )
+                {
+                    item->setSelected( true );
+                }
+            }
+        }
+    } );
 
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
     {
@@ -194,9 +214,11 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
         }
 
         auto interpreter = py::interpreter {};
+        const auto dataset = _database.dataset();
+        const auto segmentation = _database.segmentation();
 
         auto dataset_memoryview = std::optional<py::memoryview> {};
-        _dataset->visit( [&dataset_memoryview] ( const auto& dataset )
+        dataset->visit( [&dataset_memoryview] ( const auto& dataset )
         {
             using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
             dataset_memoryview = py::memoryview::from_buffer(
@@ -213,7 +235,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
         }
 
         const auto segmentation_memoryview = py::memoryview::from_buffer(
-            _segmentation->segment_numbers().data(),
+            segmentation->segment_numbers().data(),
             { segmentation->element_count() },
             { sizeof( uint32_t ) }
         );

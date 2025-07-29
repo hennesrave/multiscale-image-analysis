@@ -3,7 +3,7 @@
 #include "segmentation.hpp"
 
 #include <qcombobox.h>
-#include <qstackedlayout.h>
+#include <qlayout.h>
 
 // ----- SegmentSelector ----- //
 
@@ -16,7 +16,7 @@ SegmentSelector::SegmentSelector( QSharedPointer<const Segmentation> segmentatio
     _combobox->addItem( "Entire Dataset", QVariant::fromValue( QSharedPointer<Segment>() ) );
     _combobox->setCurrentIndex( 0 );
 
-    auto layout = new QStackedLayout { this };
+    auto layout = new QHBoxLayout { this };
     layout->setContentsMargins( 0, 0, 0, 0 );
     layout->addWidget( _combobox );
 
