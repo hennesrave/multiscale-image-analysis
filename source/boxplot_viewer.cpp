@@ -295,7 +295,7 @@ void BoxplotViewer::export_boxplots() const
         }
 
         auto stream = QTextStream { &file };
-        stream << "identifier,element_count,minimum,maximum,average,standard_deviation,lower_quartile,upper_quartile,median\n";
+        stream << "identifier,count,minimum,maximum,average,standard_deviation,lower_quartile,upper_quartile,median\n";
 
         const auto write_boxplot = [&stream]( const QString& identifier, uint32_t element_count,
             double minimum, double maximum,
@@ -324,7 +324,7 @@ void BoxplotViewer::export_boxplots() const
 
         const auto segmentation = _database.segmentation();
         const auto& segmentation_statistics = _boxplot.statistics();
-        for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
         {
             const auto segment = segmentation->segment( segment_number );
             const auto& statistics = segmentation_statistics[segment_number];

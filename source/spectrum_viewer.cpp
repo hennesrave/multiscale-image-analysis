@@ -459,7 +459,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         auto baseline_correction_menu = menu.addMenu( "Baseline Correction" );
         baseline_correction_menu->addAction( "Minimum", [this]
         {
-            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to whole the dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            const auto answer = QMessageBox::question( nullptr, "Baseline Correction", "This will apply a minimum baseline correction to the whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
             if( answer == QMessageBox::Yes )
             {
                 _database.dataset()->apply_baseline_correction_minimum();
@@ -676,12 +676,12 @@ void SpectrumViewer::export_spectra() const
         }
 
         auto stream = QTextStream { &file };
-        stream << "identifier,element_count,statistic";
+        stream << "identifier,count,statistic";
 
         const auto dataset = _database.dataset();
         for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
         {
-            stream << ",channel_" << dataset->channel_identifier( channel_index );
+            stream << ',' << dataset->channel_identifier(channel_index);
         }
         stream << '\n';
 

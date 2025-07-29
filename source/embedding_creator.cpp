@@ -144,7 +144,7 @@ EmbeddingCreator::EmbeddingCreator( QSharedPointer<const Dataset> dataset, QShar
 
     auto layout = new QFormLayout { this };
 
-    layout->addRow( "Element Filter", segment_selector );
+    layout->addRow( "Filter", segment_selector );
     layout->addRow( "Channel Filter", channels );
     layout->addRow( "", channels_select_layout );
     layout->addRow( "Normalization", normalization );

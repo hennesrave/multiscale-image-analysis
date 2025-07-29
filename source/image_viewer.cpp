@@ -441,7 +441,7 @@ void ImageViewer::export_columns() const
         }
 
         auto stream = QTextStream { &file };
-        stream << "element_index,segment_number,x,y,value\n";
+        stream << "index,segment_number,x,y,value\n";
 
         const auto dataset = _database.dataset();
         const auto spatial_metadata = dataset->spatial_metadata();

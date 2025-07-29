@@ -271,13 +271,13 @@ void HistogramViewer::export_histograms() const
         }
 
         auto stream = QTextStream { &file };
-        stream << "identifier,total_element_count";
+        stream << "identifier,total_count";
 
         const auto& edges = _histogram.edges();
         const auto precision = utility::stepsize_to_precision( edges[1] - edges[0] ) + 1;
         for( uint32_t bin = 0; bin < this->bincount(); ++bin )
         {
-            stream << "," << QString::number( edges[bin], 'f', precision ) << " \u2014 " << QString::number( edges[bin + 1], 'f', precision );
+            stream << "," << QString::number( edges[bin], 'f', precision ) << " - " << QString::number( edges[bin + 1], 'f', precision );
         }
         stream << '\n';
 
@@ -294,7 +294,7 @@ void HistogramViewer::export_histograms() const
 
         const auto& segmentation_counts = _segmentation_histogram.counts();
 
-        for( uint32_t segment_number = 0; segment_number < segmentation->segment_count(); ++segment_number )
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
         {
             const auto segment = _database.segmentation()->segment( segment_number );
             write_histogram( segment->identifier(), segment->element_count(), segmentation_counts[segment_number] );
