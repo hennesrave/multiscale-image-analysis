@@ -126,8 +126,8 @@ QSharedPointer<Dataset> DatasetImporter::from_hdf5( const std::filesystem::path&
 }
 QSharedPointer<Dataset> DatasetImporter::from_mia( const std::filesystem::path& filepath )
 {
-    auto stream = MIAFileStream {};
-    if( !stream.open( filepath, std::ios::in ) )
+    auto stream = MIAFileStream { filepath, std::ios::in };
+    if( !stream )
     {
         Console::error( "Failed to open file: " + filepath.string() );
         QMessageBox::critical( nullptr, "", "Failed to open file" );

@@ -718,8 +718,8 @@ void SpectrumViewer::export_dataset() const
     const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia" );
     if( !filepath.isEmpty() )
     {
-        auto stream = MIAFileStream {};
-        if( !stream.open( filepath.toUtf8().constData(), std::ios::out ) )
+        auto stream = MIAFileStream { filepath.toStdWString(), std::ios::out };
+        if( !stream )
         {
             QMessageBox::critical( nullptr, "", "Failed to open file" );
             return;

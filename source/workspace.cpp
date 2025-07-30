@@ -3,6 +3,8 @@
 #include "database.hpp"
 #include "utility.hpp"
 
+#include "feature_selector.hpp"
+
 #include "boxplot_viewer.hpp"
 #include "colormap_viewer.hpp"
 #include "embedding_viewer.hpp"
@@ -37,8 +39,17 @@ Workspace::Workspace( Database& database ) : _database { database }
         image_viewer_layout->addWidget( _colormap_viewer );
         image_viewer_layout->addWidget( _image_viewer, 1 );
 
+        auto histogram_feature_selector = new FeatureSelector { database.features() };
+
+        auto histogram_viewer_container = new QWidget {};
+        auto histogram_viewer_layout = new QVBoxLayout { histogram_viewer_container };
+        histogram_viewer_layout->setContentsMargins( 0, 3, 0, 0 );
+        histogram_viewer_layout->setSpacing( 0 );
+        histogram_viewer_layout->addWidget( histogram_feature_selector, 0, Qt::AlignCenter );
+        histogram_viewer_layout->addWidget( _histogram_viewer, 1 );
+
         auto splitter_histogram_boxplot = new QSplitter { Qt::Vertical };
-        splitter_histogram_boxplot->addWidget( _histogram_viewer );
+        splitter_histogram_boxplot->addWidget( histogram_viewer_container );
         splitter_histogram_boxplot->addWidget( _boxplot_viewer );
         splitter_histogram_boxplot->setSizes( { 10000, 10000 } );
 

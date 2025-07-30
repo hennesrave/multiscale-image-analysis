@@ -361,8 +361,8 @@ except Exception as exception:
             }
             else if( extension == ".mia" )
             {
-                auto stream = MIAFileStream {};
-                if( !stream.open( filepath, std::ios::out ) )
+                auto stream = MIAFileStream { filepath, std::ios::out };
+                if( !stream )
                 {
                     QMessageBox::critical( nullptr, "", "Failed to open output file", QMessageBox::Ok );
                     this->reject();

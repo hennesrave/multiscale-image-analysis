@@ -691,8 +691,8 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     }
     else if( extension == ".mia" )
     {
-        auto stream = MIAFileStream {};
-        if( !stream.open( filepath, std::ios::in ) )
+        auto stream = MIAFileStream { filepath, std::ios::in };
+        if( !stream )
         {
             QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
             return;
