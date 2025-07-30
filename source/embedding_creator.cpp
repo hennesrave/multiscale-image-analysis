@@ -184,24 +184,6 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         auto selected_filter = QString { "*.mia" };
         auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter );
 
-        if( !filepath.isEmpty() )
-        {
-            auto valid_extension = false;
-            for( const auto& filter : filters )
-            {
-                if( filepath.endsWith( filter.section( '.', 1 ) ) )
-                {
-                    valid_extension = true;
-                    break;
-                }
-            }
-
-            if( !valid_extension )
-            {
-                filepath += '.' + selected_filter.section( '.', 1 );
-            }
-        }
-
         filepath_label->setText( filepath );
     } );
 
