@@ -436,7 +436,7 @@ void ImageViewer::export_columns() const
         auto file = QFile { filepath };
         if( !file.open( QFile::WriteOnly | QFile::Text ) )
         {
-            QMessageBox::critical( nullptr, "Error", "Could not open file for writing." );
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
             return;
         }
 
@@ -463,7 +463,7 @@ void ImageViewer::export_columns() const
         }
         else
         {
-            QMessageBox::warning( nullptr, "", "The current colormap does not support exporting as columns." );
+            QMessageBox::warning( nullptr, "", "The current colormap does not support exporting as columns" );
         }
     }
 }
@@ -475,7 +475,7 @@ void ImageViewer::export_matrix() const
         auto file = QFile { filepath };
         if( !file.open( QFile::WriteOnly | QFile::Text ) )
         {
-            QMessageBox::critical( nullptr, "Error", "Could not open file for writing." );
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
             return;
         }
 
@@ -511,7 +511,7 @@ void ImageViewer::export_matrix() const
         }
         else
         {
-            QMessageBox::warning( nullptr, "", "The current colormap does not support exporting as matrix." );
+            QMessageBox::warning( nullptr, "", "The current colormap does not support exporting as matrix" );
         }
     }
 }

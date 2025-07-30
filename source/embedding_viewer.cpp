@@ -666,7 +666,7 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         auto stream = std::ifstream { filepath };
         if( !stream )
         {
-            QMessageBox::critical( this, "Import Embedding...", "Failed to open file." );
+            QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
             return;
         }
 
@@ -694,14 +694,14 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         auto stream = MIAFileStream {};
         if( !stream.open( filepath, std::ios::in ) )
         {
-            QMessageBox::critical( this, "Import Embedding...", "Failed to open file." );
+            QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
             return;
         }
 
         const auto identifier = stream.read<std::string>();
         if( identifier != "Embedding" )
         {
-            QMessageBox::critical( this, "Import Embedding...", "Invalid embedding file." );
+            QMessageBox::critical( this, "Import Embedding...", "Invalid embedding file" );
             return;
         }
 
@@ -714,7 +714,8 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     }
     else
     {
-        QMessageBox::critical( this, "Import Embedding...", "Unsupported file format: " + QString::fromStdString( extension.string() ) );
+        Console::error( "Unsupported file format: " + filepath.string() );
+        QMessageBox::critical( this, "Import Embedding...", "Unsupported file format" );
     }
 
     _search_tree.reset( new SearchTree { _point_positions } );

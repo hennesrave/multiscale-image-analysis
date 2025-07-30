@@ -191,7 +191,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     {
         if( filepath_label->text().isEmpty() )
         {
-            QMessageBox::warning( nullptr, "Create Embedding...", "Please select a valid filepath." );
+            QMessageBox::warning( nullptr, "Create Embedding...", "Please select a valid filepath" );
             return;
         }
 
@@ -211,7 +211,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         } );
         if( !dataset_memoryview.has_value() )
         {
-            QMessageBox::critical( nullptr, "Create Embedding...", "Cannot create an embedding for this dataset." );
+            QMessageBox::critical( nullptr, "Create Embedding...", "Cannot create an embedding for this dataset" );
             this->reject();
             return;
         }
@@ -346,7 +346,7 @@ except Exception as exception:
                 auto stream = std::ofstream { filepath, std::ios::out };
                 if( !stream )
                 {
-                    QMessageBox::critical( nullptr, "Create Embedding...", "Failed to open output file.", QMessageBox::Ok );
+                    QMessageBox::critical( nullptr, "", "Failed to open output file", QMessageBox::Ok );
                     this->reject();
                     return;
                 }
@@ -364,7 +364,7 @@ except Exception as exception:
                 auto stream = MIAFileStream {};
                 if( !stream.open( filepath, std::ios::out ) )
                 {
-                    QMessageBox::critical( nullptr, "Create Embedding...", "Failed to open output file.", QMessageBox::Ok );
+                    QMessageBox::critical( nullptr, "", "Failed to open output file", QMessageBox::Ok );
                     this->reject();
                     return;
                 }
@@ -379,7 +379,8 @@ except Exception as exception:
             }
             else
             {
-                QMessageBox::critical( nullptr, "Create Embedding...", "Unsupported file format.", QMessageBox::Ok );
+                Console::error( "Unsupported file format: " + extension.string() );
+                QMessageBox::critical( nullptr, "", "Unsupported file format", QMessageBox::Ok );
                 this->reject();
                 return;
             }
@@ -390,7 +391,7 @@ except Exception as exception:
         else
         {
             Console::error( std::format( "Python error during embedding creation: {}", error ) );
-            QMessageBox::critical( nullptr, "Create Embedding...", "Failed to create embedding.", QMessageBox::Ok );
+            QMessageBox::critical( nullptr, "", "Failed to create embedding", QMessageBox::Ok );
             this->reject();
         }
     } );

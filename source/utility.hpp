@@ -582,7 +582,7 @@ public:
     {
         if( _compute_function )
         {
-            Console::warning( "Computed value already initialized, overwriting." );
+            Console::warning( "Computed value already initialized, overwriting" );
         }
         _compute_function = std::move( compute_function );
     }
@@ -602,7 +602,7 @@ public:
         {
             if( !_compute_function )
             {
-                Console::critical( "Computed value requested without a compute function." );
+                Console::critical( "Computed value requested without a compute function" );
             }
 
             _value = _compute_function();
