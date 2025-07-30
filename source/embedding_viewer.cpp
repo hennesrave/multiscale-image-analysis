@@ -521,7 +521,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.addAction( "Import Embedding", [this]
                 {
                     auto selected_filter = QString { "*.mia" };
-                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter, QFileDialog::DontUseNativeDialog );
+                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter );
                     this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
                 } );
 
@@ -724,7 +724,7 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
 }
 void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
 {
-    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png", nullptr, QFileDialog::DontUseNativeDialog );
+    const auto filepath = scaling == 0 ? QString { "clipboard" } : QFileDialog::getSaveFileName( nullptr, "Export Image...", "", "*.png", nullptr );
 
     if( !filepath.isEmpty() )
     {

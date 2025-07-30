@@ -296,7 +296,7 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
 
             const auto world = this->screen_to_world( hovered_value.screen );
             const auto string = QString {
-                "x = " + QString::number( world.x(), 'f', this->xaxis().precision ) + ", " +
+                "x = " + dataset->channel_identifier( *highlighted_channel_index ) + ", " +
                 "y = " + QString::number( world.y(), 'f', this->yaxis().precision + 2 )
             };
 
@@ -725,21 +725,7 @@ void SpectrumViewer::export_dataset() const
             return;
         }
 
-        stream.write( std::string { "Dataset[SpatialMetadata]" } );
-
         const auto dataset = _database.dataset();
-        stream.write( dataset->element_count() );
-        stream.write( dataset->channel_count() );
-        stream.write( *dataset->spatial_metadata() );
-        stream.write( dataset->basetype() );
-
-        dataset->visit( [&stream] ( const auto& dataset )
-        {
-            const auto& channel_positions = dataset.channel_positions();
-            stream.write( channel_positions.data(), channel_positions.bytes() );
-
-            const auto& intensities = dataset.intensities();
-            stream.write( intensities.data(), intensities.bytes() );
-        } );
+        stream.write( dataset );
     }
 }

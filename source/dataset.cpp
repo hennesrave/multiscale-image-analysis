@@ -1,18 +1,52 @@
 #include "dataset.hpp"
 
+#include <regex>
+
+#include <qmessagebox.h>
+
 // ----- Dataset ----- //
 
-Dataset::Dataset() : QObject {}, _statistics { std::bind( &Dataset::compute_statistics, this ) }
+Dataset::Dataset()
+    : QObject {}
+    , _computed_channel_identifiers { std::bind( &Dataset::compute_channel_identifiers, this ) }
+    , _override_channel_identifiers { std::nullopt }
+    , _statistics { std::bind( &Dataset::compute_statistics, this ) }
 {
     QObject::connect( this, &Dataset::intensities_changed, &_statistics, &ComputedObject::invalidate );
-    QObject::connect( &_channel_identifier_precision, &Override<int>::value_changed, this, &Dataset::channel_identifiers_changed );
+    QObject::connect( &_channel_identifier_precision, &OverrideObject::value_changed, &_computed_channel_identifiers, &ComputedObject::invalidate );
 
+    QObject::connect( &_computed_channel_identifiers, &ComputedObject::changed, this, &Dataset::channel_identifiers_changed );
     QObject::connect( &_statistics, &ComputedObject::changed, this, &Dataset::statistics_changed );
+
+    emit _computed_channel_identifiers.changed();
 }
 
-QString Dataset::channel_identifier( uint32_t channel_index ) const
+void Dataset::update_channel_identifiers( Array<QString> channel_identifiers )
 {
-    return QString::number( this->channel_position( channel_index ), 'f', _channel_identifier_precision.value() );
+    _override_channel_identifiers = std::move( channel_identifiers );
+    _computed_channel_identifiers.invalidate();
+}
+void Dataset::update_spatial_metadata( std::unique_ptr<SpatialMetadata> spatial_metadata )
+{
+    if( _spatial_metadata != spatial_metadata )
+    {
+        _spatial_metadata = std::move( spatial_metadata );
+        emit spatial_metadata_changed();
+    }
+}
+
+const QString& Dataset::channel_identifier( uint32_t channel_index ) const
+{
+    return _computed_channel_identifiers.value()[channel_index];
+}
+const Dataset::SpatialMetadata* Dataset::spatial_metadata() const noexcept
+{
+    return _spatial_metadata.get();
+}
+
+const std::optional<Array<QString>>& Dataset::override_channel_identifiers() const noexcept
+{
+    return _override_channel_identifiers;
 }
 
 const Dataset::Statistics& Dataset::statistics() const noexcept
@@ -46,6 +80,23 @@ const Array<Dataset::Statistics>& Dataset::segmentation_statistics( QSharedPoint
         } );
     }
     return **_segmentation_statistics[segmentation_pointer];
+}
+
+Array<QString> Dataset::compute_channel_identifiers() const
+{
+    if( _override_channel_identifiers.has_value() )
+    {
+        return *_override_channel_identifiers;
+    }
+    else
+    {
+        auto channel_identifiers = Array<QString> { this->channel_count(), QString {} };
+        utility::iterate_parallel<uint32_t>( 0, this->channel_count(), [&] ( uint32_t channel_index )
+        {
+            channel_identifiers[channel_index] = QString::number( this->channel_position( channel_index ), 'f', _channel_identifier_precision.value() );
+        } );
+        return channel_identifiers;
+    }
 }
 
 // ----- Dataset::SpatialMetadata ----- //

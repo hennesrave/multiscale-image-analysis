@@ -55,18 +55,22 @@ public:
 
     Dataset();
 
+    void update_channel_identifiers( Array<QString> channel_identifiers );
+    void update_spatial_metadata( std::unique_ptr<SpatialMetadata> spatial_metadata );
+
     virtual uint32_t element_count() const noexcept = 0;
     virtual uint32_t channel_count() const noexcept = 0;
     virtual Basetype basetype() const noexcept = 0;
 
-    virtual Array<double> element_intensities( uint32_t element_index ) const = 0;
     virtual double channel_position( uint32_t channel_index ) const = 0;
-    virtual const SpatialMetadata* spatial_metadata() const = 0;
+    const QString& channel_identifier( uint32_t channel_index ) const;
+    const SpatialMetadata* spatial_metadata() const noexcept;
 
+    virtual Array<double> element_intensities( uint32_t element_index ) const = 0;
     virtual void apply_baseline_correction_minimum() = 0;
     virtual void apply_baseline_correction_linear() = 0;
 
-    QString channel_identifier( uint32_t channel_index ) const;
+    const std::optional<Array<QString>>& override_channel_identifiers() const noexcept;
 
     void visit( auto&& callable ) const;
     const Statistics& statistics() const noexcept;
@@ -74,15 +78,23 @@ public:
 
 signals:
     void intensities_changed() const;
-    void statistics_changed() const;
-    void segmentation_statistics_changed( QSharedPointer<const Segmentation> segmentation ) const;
+    void spatial_metadata_changed() const;
     void channel_identifiers_changed() const;
 
+    void statistics_changed() const;
+    void segmentation_statistics_changed( QSharedPointer<const Segmentation> segmentation ) const;
+
 protected:
+    virtual Array<QString> compute_channel_identifiers() const;
     virtual Statistics compute_statistics() const = 0;
     virtual Array<Statistics> compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const = 0;
 
+    Computed<Array<QString>> _computed_channel_identifiers;
     Override<int> _channel_identifier_precision { 2, std::nullopt };
+
+    std::optional<Array<QString>> _override_channel_identifiers;
+    std::unique_ptr<SpatialMetadata> _spatial_metadata;
+
     Computed<Statistics> _statistics;
     mutable std::unordered_map<const Segmentation*, std::unique_ptr<Computed<Array<Statistics>>>> _segmentation_statistics;
 };
@@ -94,8 +106,7 @@ template<class T> class TensorDataset : public Dataset
 public:
     using value_type = T;
 
-    TensorDataset( SpatialMetadata spatial_metadata, Matrix<value_type> intensities, Array<double> channel_positions ) : Dataset {},
-        _spatial_metadata { spatial_metadata }, _intensities { std::move( intensities ) }, _channel_positions { std::move( channel_positions ) }
+    TensorDataset( Matrix<value_type> intensities, Array<double> channel_positions ) : Dataset {}, _intensities { std::move( intensities ) }, _channel_positions { std::move( channel_positions ) }
     {
         auto stepsize = std::numeric_limits<double>::max();
         for( uint32_t channel_index = 0; channel_index < _channel_positions.size() - 1; ++channel_index )
@@ -149,10 +160,6 @@ public:
     double channel_position( uint32_t channel_index ) const override
     {
         return _channel_positions[channel_index];
-    }
-    const SpatialMetadata* spatial_metadata() const override
-    {
-        return &_spatial_metadata;
     }
 
     void apply_baseline_correction_minimum() override
@@ -282,7 +289,6 @@ private:
         return segmentation_statistics;
     }
 
-    SpatialMetadata _spatial_metadata;
     Matrix<value_type> _intensities;
     Array<double> _channel_positions;
 };

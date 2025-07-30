@@ -182,7 +182,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         const auto filters = QStringList { "*.csv", "*.mia" };
         const auto filters_string = filters.join( ";;" );
         auto selected_filter = QString { "*.mia" };
-        auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter, QFileDialog::DontUseNativeDialog );
+        auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter );
 
         if( !filepath.isEmpty() )
         {

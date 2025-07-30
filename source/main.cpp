@@ -51,6 +51,7 @@ int main( int argc, char** argv )
     py::interpreter::initialize();
 
     // Initialize workspace
+    Console::info( "Importing dataset..." );
     if( const auto dataset = DatasetImporter::execute() )
     {
         auto database = Database { dataset };

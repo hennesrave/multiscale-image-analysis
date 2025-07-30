@@ -7,6 +7,8 @@
 #include "json.hpp"
 
 #include <fstream>
+#include <regex>
+#include <sstream>
 
 #include <qcheckbox.h>
 #include <qcombobox.h>
@@ -18,9 +20,108 @@
 #include <qpushbutton.h>
 #include <qspinbox.h>
 
+namespace importers
+{
+    Dataset* import_single_particle( const std::filesystem::path& filepath )
+    {
+        auto filestream = std::stringstream {};
+        auto linestring = std::string {};
+        auto linestream = std::stringstream {};
+        auto tokenstring = std::string {};
+
+        filestream << std::fstream { filepath, std::ios::in }.rdbuf();
+        if( !filestream ) return {};
+
+        // Skip comments
+        while( std::getline( filestream, linestring, '\n' ) )
+            if( linestring.front() != '#' ) break;
+
+        // Read dimensions
+        linestream = std::stringstream { linestring };
+        tokenstring = std::string {};
+
+        auto dimensions = std::vector<std::string> {};
+        while( std::getline( linestream, tokenstring, ',' ) )
+            dimensions.push_back( tokenstring );
+
+        // Read units
+        std::getline( filestream, linestring, '\n' );
+        linestream = std::stringstream { linestring };
+        tokenstring = std::string {};
+
+        auto units = std::vector<std::string> {};
+        while( std::getline( linestream, tokenstring, ',' ) )
+            units.push_back( tokenstring );
+
+        auto channel_indices = std::vector<uint32_t> {};
+        auto channel_strings = std::vector<std::string> {};
+        for( uint32_t dimension_index = 0; dimension_index < dimensions.size(); ++dimension_index )
+        {
+            if( units[dimension_index] == "counts" )
+            {
+                channel_indices.push_back( dimension_index );
+                channel_strings.push_back( dimensions[dimension_index] );
+            }
+        }
+
+        auto lines = std::vector<std::string> {};
+        while( std::getline( filestream, linestring, '\n' ) )
+        {
+            if( linestring.front() == '#' ) break;
+            lines.push_back( linestring );
+        }
+
+        auto channel_positions = Array<double>::allocate( channel_indices.size() );
+        auto channel_identifiers = Array<QString> { channel_indices.size(), QString {} };
+        for( uint32_t channel_index = 0; channel_index < channel_indices.size(); ++channel_index )
+        {
+            channel_positions[channel_index] = static_cast<double>( channel_index );
+            channel_identifiers[channel_index] = QString::fromStdString( channel_strings[channel_index] );
+        }
+
+        auto intensities = Matrix<double>::allocate( { lines.size(), channel_indices.size() } );
+        for( uint32_t element_index = 0; element_index < lines.size(); ++element_index )
+        {
+            linestream = std::stringstream { lines[element_index] };
+
+            auto channel_index = uint32_t { 0 };
+            for( uint32_t dimension_index = 0; dimension_index < dimensions.size(); ++dimension_index )
+            {
+                std::getline( linestream, tokenstring, ',' );
+                if( dimension_index == channel_indices[channel_index] )
+                {
+                    intensities.value( { element_index, channel_index } ) = tokenstring.empty() ? 0.0 : std::stod( tokenstring );
+                    ++channel_index;
+                }
+            }
+        }
+
+        auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+        dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+        return dataset;
+    }
+    Dataset* import_csv( const std::filesystem::path& filepath )
+    {
+        auto filestream = std::ifstream { filepath };
+        auto linestring = std::string {};
+        std::getline( filestream, linestring, '\n' );
+
+        if( linestring.find( "# SPCal Export" ) != std::string::npos )
+        {
+            filestream.close();
+            return import_single_particle( filepath );
+        }
+        else
+        {
+            QMessageBox::critical( nullptr, "", "Unsupported file format." );
+            return nullptr;
+        }
+    }
+}
+
 QSharedPointer<Dataset> DatasetImporter::execute()
 {
-    const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import dataset...", "", "", nullptr, QFileDialog::DontUseNativeDialog );
+    const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import dataset...", "", "", nullptr );
     const auto fileinfo = QFileInfo { filepath };
 
     auto dataset = QSharedPointer<Dataset> {};
@@ -92,7 +193,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 {
                     if( laser_line.line_type != 0 )
                     {
-                        QMessageBox::critical( nullptr, "", "Unsupported line type encountered" );
+                        QMessageBox::critical( nullptr, "", "Unsupported line type encountered." );
                         return;
                     }
                 }
@@ -343,7 +444,6 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                                 static_cast<uint32_t>( laser_lines.size() ),
                                 static_cast<uint32_t>( channels.size() )
                             };
-                            spatial_metadata = Dataset::SpatialMetadata { dimensions[0], dimensions[1] };
                             intensities = Matrix<float> { { dimensions[0] * dimensions[1], dimensions[2] }, 0.0f };
                         }
 
@@ -420,7 +520,8 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                     }
                 }
 
-                dataset.reset( new TensorDataset<float> { spatial_metadata, std::move( intensities ), std::move( channels ) } );
+                dataset.reset( new TensorDataset<float> { std::move( intensities ), std::move( channels ) } );
+                dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions[0], dimensions[1] ) );
             }( );
         }
         else if( filename == ".zgroup" )
@@ -455,10 +556,11 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 auto intensities_pointer = static_cast<float*>( hypercube.mutable_data() );
                 auto wavenumbers_pointer = static_cast<double*>( wavenumbers.mutable_data() );
 
-                dataset.reset( new TensorDataset<float> { Dataset::SpatialMetadata { dimensions.y, dimensions.x },
+                dataset.reset( new TensorDataset<float> {
                     Matrix<float>::from_pointer( { static_cast<size_t>( dimensions[0] ) * dimensions[1], dimensions[2] }, intensities_pointer ),
                     Array<double>::from_pointer( { dimensions[2] }, wavenumbers_pointer ) }
-                );
+                    );
+                dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
 
                 hypercube.release();
                 wavenumbers.release();
@@ -469,6 +571,10 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 QMessageBox::critical( nullptr, "", "Failed to import dataset", QMessageBox::Ok );
                 return nullptr;
             }
+        }
+        else if( suffix == "csv" )
+        {
+            dataset.reset( importers::import_csv( std::filesystem::path { filepath.toStdWString() } ) );
         }
         else if( suffix == "h5" )
         {
@@ -526,8 +632,8 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                         channels.value( i ) = std::clamp( channels_lower->value() + i * stepsize, channels_lower->value(), channels_upper->value() );
                     }
 
-                    const auto spatial_metadata = Dataset::SpatialMetadata { dimensions.x, dimensions.y };
-                    dataset.reset( new TensorDataset { spatial_metadata, std::move( intensities ), std::move( channels ) } );
+                    dataset.reset( new TensorDataset { std::move( intensities ), std::move( channels ) } );
+                    dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
                     tensor.release();
                 } );
             }
@@ -546,75 +652,7 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 QMessageBox::critical( nullptr, "", "Failed to open file" );
                 return nullptr;
             }
-
-            const auto identifier = stream.read<std::string>();
-            if( identifier != "Dataset[SpatialMetadata]" )
-            {
-                QMessageBox::critical( nullptr, "", "Invalid dataset file.", QMessageBox::Ok );
-                return nullptr;
-            }
-
-            const auto element_count = stream.read<uint32_t>();
-            const auto channel_count = stream.read<uint32_t>();
-            const auto spatial_metadata = stream.read<Dataset::SpatialMetadata>();
-            const auto base_type = stream.read<Dataset::Basetype>();
-
-            auto channel_positions = Array<double>::allocate( channel_count );
-            stream.read( channel_positions.data(), channel_positions.bytes() );
-
-            if( base_type == Dataset::Basetype::eInt8 )
-            {
-                auto intensities = Matrix<int8_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<int8_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eInt16 )
-            {
-                auto intensities = Matrix<int16_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<int16_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eInt32 )
-            {
-                auto intensities = Matrix<int32_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<int32_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eUint8 )
-            {
-                auto intensities = Matrix<uint8_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<uint8_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eUint16 )
-            {
-                auto intensities = Matrix<uint16_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<uint16_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eUint32 )
-            {
-                auto intensities = Matrix<uint32_t>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<uint32_t> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eFloat )
-            {
-                auto intensities = Matrix<float>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<float> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else if( base_type == Dataset::Basetype::eDouble )
-            {
-                auto intensities = Matrix<double>::allocate( { element_count, channel_count } );
-                stream.read( intensities.data(), intensities.bytes() );
-                dataset.reset( new TensorDataset<double> { spatial_metadata, std::move( intensities ), std::move( channel_positions ) } );
-            }
-            else
-            {
-                QMessageBox::critical( nullptr, "", "Unsupported dataset value type.", QMessageBox::Ok );
-                return nullptr;
-            }
+            stream.read( dataset );
         }
         else if( suffix == "rpl" )
         {
@@ -662,8 +700,6 @@ QSharedPointer<Dataset> DatasetImporter::execute()
                 return nullptr;
             }
 
-            const auto spatial_metadata = Dataset::SpatialMetadata { dimensions.x, dimensions.y };
-
             auto channels = Array<double> { dimensions.z, 0.0 };
             std::iota( channels.begin(), channels.end(), 0.0 );
 
@@ -679,7 +715,8 @@ QSharedPointer<Dataset> DatasetImporter::execute()
             {
                 auto intensities_stream = QDataStream { &intensities_file };
                 intensities_stream.readRawData( reinterpret_cast<char*>( intensities.data() ), static_cast<qint64>( intensities.bytes() ) );
-                dataset.reset( new TensorDataset { spatial_metadata, std::move( intensities ), std::move( channels ) } );
+                dataset.reset( new TensorDataset { std::move( intensities ), std::move( channels ) } );
+                dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
             };
 
             if( datatype == "unsigned" )

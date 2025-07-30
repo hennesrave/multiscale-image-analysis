@@ -260,7 +260,7 @@ void HistogramViewer::leaveEvent( QEvent* event )
 
 void HistogramViewer::export_histograms() const
 {
-    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Histograms...", "", "*.csv", nullptr, QFileDialog::DontUseNativeDialog );
+    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Histograms...", "", "*.csv", nullptr );
     if( !filepath.isEmpty() )
     {
         auto file = QFile { filepath };

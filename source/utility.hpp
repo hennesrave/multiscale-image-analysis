@@ -1,6 +1,7 @@
 #pragma once
 #include "configuration.hpp"
 #include "console.hpp"
+#include "filestream.hpp"
 #include "tensor.hpp"
 
 #include <algorithm>
@@ -27,6 +28,8 @@ namespace utility
     int stepsize_to_precision( double stepsize );
     int compute_precision( double value );
 
+    QString request_import_filepath( const QString& title, const QString& filter );
+
     template<class IndexType> void iterate_parallel( IndexType start, IndexType end, auto&& callable )
     {
         const auto range = std::views::iota( start, end );
@@ -36,6 +39,14 @@ namespace utility
     {
         iterate_parallel( IndexType { 0 }, end, std::forward<decltype( callable )>( callable ) );
     }
+}
+
+namespace concepts
+{
+    template<class T> concept NotEqualComparable = requires( T a, T b )
+    {
+        { a != b } -> std::convertible_to<bool>;
+    };
 }
 
 // ----- Formatters ----- //
@@ -495,7 +506,7 @@ public:
     {
         return _automatic_value;
     }
-    void update_automatic_value( value_type automatic_value ) noexcept
+    void update_automatic_value( value_type automatic_value ) noexcept requires( concepts::NotEqualComparable<value_type> )
     {
         if( _automatic_value != automatic_value )
         {
@@ -507,18 +518,32 @@ public:
             }
         }
     }
+    void update_automatic_value( value_type automatic_value ) noexcept requires( !concepts::NotEqualComparable<value_type> )
+    {
+        _automatic_value = automatic_value;
+
+        if( !_override_value.has_value() )
+        {
+            emit value_changed();
+        }
+    }
 
     const std::optional<value_type>& override_value() const noexcept
     {
         return _override_value;
     }
-    void update_override_value( std::optional<value_type> override_value ) noexcept
+    void update_override_value( std::optional<value_type> override_value ) noexcept requires( concepts::NotEqualComparable<value_type> )
     {
         if( _override_value != override_value )
         {
             _override_value = override_value;
             emit value_changed();
         }
+    }
+    void update_override_value( std::optional<value_type> override_value ) noexcept requires( !concepts::NotEqualComparable<value_type> )
+    {
+        _override_value = override_value;
+        emit value_changed();
     }
 
     const value_type& value() const noexcept
@@ -614,55 +639,3 @@ private:
     std::function<value_type()> _compute_function;
 };
 
-// ----- MIAFileStream ----- //
-
-class MIAFileStream
-{
-public:
-    static constexpr uint8_t magic_number[8] = { 'M', 'I', 'A', '_', 'F', 'I', 'L', 'E' };
-
-    MIAFileStream() noexcept = default;
-    MIAFileStream( const MIAFileStream& ) = delete;
-    MIAFileStream( MIAFileStream&& ) = delete;
-
-    MIAFileStream& operator=( const MIAFileStream& ) = delete;
-    MIAFileStream& operator=( MIAFileStream&& ) = delete;
-
-    ~MIAFileStream();
-
-    operator bool() const noexcept;
-
-    bool open( const std::filesystem::path& filepath, std::ios::openmode openmode );
-    const config::ApplicationVersion& application_version() const noexcept
-    {
-        return _application_version;
-    }
-
-    void read( void* data, size_t size );
-    void write( const void* data, size_t size );
-
-    template<class Type> void read( Type& value )
-    {
-        static_assert( std::is_trivially_copyable_v<Type>, "Type must be trivially copyable." );
-        this->read( std::addressof( value ), sizeof( Type ) );
-    }
-    template<class Type> void write( const Type& value )
-    {
-        static_assert( std::is_trivially_copyable_v<Type>, "Type must be trivially copyable." );
-        this->write( std::addressof( value ), sizeof( Type ) );
-    }
-
-    template<class Type> Type read()
-    {
-        auto value = Type {};
-        this->read<Type>( value );
-        return value;
-    }
-
-private:
-    std::fstream _stream;
-    config::ApplicationVersion _application_version;
-};
-
-template<> void MIAFileStream::read( std::string& value );
-template<> void MIAFileStream::write( const std::string& value );

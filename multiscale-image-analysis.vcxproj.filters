@@ -120,6 +120,9 @@
     <ClCompile Include="source\console.cpp">
       <Filter>Source Files\utility</Filter>
     </ClCompile>
+    <ClCompile Include="source\filestream.cpp">
+      <Filter>Source Files\utility</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -135,6 +138,9 @@
       <Filter>Header Files\application\widgets</Filter>
     </ClInclude>
     <ClInclude Include="source\console.hpp">
+      <Filter>Header Files\utility</Filter>
+    </ClInclude>
+    <ClInclude Include="source\filestream.hpp">
       <Filter>Header Files\utility</Filter>
     </ClInclude>
   </ItemGroup>
