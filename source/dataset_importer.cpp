@@ -718,7 +718,7 @@ QSharedPointer<Dataset> DatasetImporter::from_zarr( const std::filesystem::path&
             Matrix<float>::from_pointer( { static_cast<size_t>( dimensions[0] ) * dimensions[1], dimensions[2] }, intensities_pointer ),
             Array<double>::from_pointer( { dimensions[2] }, wavenumbers_pointer )
         };
-        dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
+        dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.y, dimensions.x ) );
         return QSharedPointer<Dataset> { dataset };
     }
     catch( const py::error_already_set& error )
