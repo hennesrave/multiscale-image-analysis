@@ -126,6 +126,9 @@
     <ClCompile Include="source\feature_manager.cpp">
       <Filter>Source Files\application\widgets</Filter>
     </ClCompile>
+    <ClCompile Include="source\string_input.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -215,6 +218,9 @@
       <Filter>Header Files\database</Filter>
     </QtMoc>
     <QtMoc Include="source\feature_manager.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\string_input.hpp">
       <Filter>Header Files\application\widgets</Filter>
     </QtMoc>
   </ItemGroup>

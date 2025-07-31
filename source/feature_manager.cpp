@@ -1,6 +1,7 @@
 #include "feature_manager.hpp"
 
 #include "database.hpp"
+#include "string_input.hpp"
 
 #include <qapplication.h>
 #include <qcolordialog.h>
@@ -64,6 +65,11 @@ FeatureManager::FeatureManager( Database& database ) : QDialog {}, _database { d
     const auto features = _database.features();
     QObject::connect( features.get(), &CollectionObject::object_appended, this, &FeatureManager::feature_appended );
     QObject::connect( features.get(), &CollectionObject::object_removed, this, &FeatureManager::feature_removed );
+
+    for( qsizetype object_index = 0; object_index < features->object_count(); ++object_index )
+    {
+        this->feature_appended( features->object( object_index ) );
+    }
 }
 void FeatureManager::execute( Database& database )
 {
@@ -73,11 +79,18 @@ void FeatureManager::execute( Database& database )
 
 void FeatureManager::feature_appended( QSharedPointer<QObject> object )
 {
-    const auto feature_pointer = object.staticCast<Feature>().get();
+    const auto feature = object.staticCast<Feature>();
+
+    auto lineedit_identfier = new StringInput { feature->override_identifier() };
+
+    auto button_remove = new QToolButton {};
+    button_remove->setIcon( QIcon { ":/delete.svg" } );
 
     auto header = new QHBoxLayout {};
     header->setContentsMargins( 0, 0, 0, 0 );
     header->setSpacing( 5 );
+    header->addWidget( lineedit_identfier );
+    header->addWidget( button_remove );
 
     auto properties = new QVBoxLayout {};
     properties->setContentsMargins( 20, 0, 0, 0 );
@@ -92,8 +105,16 @@ void FeatureManager::feature_appended( QSharedPointer<QObject> object )
     container_layout->addLayout( header );
     container_layout->addLayout( properties );
 
+    QObject::connect( button_remove, &QToolButton::clicked, this, [this, pointer = QWeakPointer { feature }]
+    {
+        if( auto feature = pointer.lock() )
+        {
+            _database.features()->remove( feature );
+        }
+    } );
+
     _features_layout->addWidget( container_widget );
-    _feature_widgets[feature_pointer] = container_widget;
+    _feature_widgets[feature.get()] = container_widget;
 }
 void FeatureManager::feature_removed( QSharedPointer<QObject> object )
 {

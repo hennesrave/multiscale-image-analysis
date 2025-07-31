@@ -34,6 +34,10 @@ void Feature::update_identifier( const QString& identifier )
 {
     _identifier.update_override_value( identifier );
 }
+Override<QString>& Feature::override_identifier() noexcept
+{
+    return _identifier;
+}
 
 const Array<double>& Feature::values() const noexcept
 {

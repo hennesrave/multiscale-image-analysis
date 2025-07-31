@@ -128,6 +128,7 @@
     <ClCompile Include="source\segment_selector.cpp" />
     <ClCompile Include="source\segmentation.cpp" />
     <ClCompile Include="source\spectrum_viewer.cpp" />
+    <ClCompile Include="source\string_input.cpp" />
     <ClCompile Include="source\utility.cpp" />
     <ClCompile Include="source\workspace.cpp" />
   </ItemGroup>
@@ -161,6 +162,7 @@
     <QtMoc Include="source\segmentation.hpp" />
     <QtMoc Include="source\spectrum_viewer.hpp" />
     <QtMoc Include="source\segmentation_manager.hpp" />
+    <QtMoc Include="source\string_input.hpp" />
     <ClInclude Include="source\tensor.hpp" />
     <QtMoc Include="source\utility.hpp" />
   </ItemGroup>

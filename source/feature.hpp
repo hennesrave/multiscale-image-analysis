@@ -36,6 +36,7 @@ public:
 
     const QString& identifier() const noexcept;
     void update_identifier( const QString& identifier );
+    Override<QString>& override_identifier() noexcept;
 
     const Array<double>& values() const noexcept;
     const Extremes& extremes() const noexcept;
