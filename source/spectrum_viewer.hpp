@@ -13,6 +13,14 @@ private:
         bool both = false;
     };
 
+    struct ImportedSpectrum
+    {
+        QString identifier;
+        QColor color;
+        QString statistic;
+        Array<double> values;
+    };
+
 public:
     enum class StatisticsMode
     {
@@ -49,9 +57,11 @@ private:
     void update_hovered_feature();
     void baseline_correction() const;
     void export_spectra() const;
+    void import_spectra();
     void export_dataset() const;
 
     Database& _database;
+    std::vector<ImportedSpectrum> _imported_spectra;
 
     StatisticsMode _statistics_mode = StatisticsMode::eAverage;
     VisualizationMode _visualization_mode = VisualizationMode::eLine;

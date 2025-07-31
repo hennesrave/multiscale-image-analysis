@@ -8,10 +8,13 @@
 #include <qactiongroup.h>
 #include <qevent.h>
 #include <qfiledialog.h>
+#include <qformlayout.h>
 #include <qlabel.h>
+#include <qlistwidget.h>
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qpainter.h>
+#include <qpushbutton.h>
 #include <qwidgetaction.h>
 
 SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
@@ -35,12 +38,12 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
         const auto yaxis_center = ( yaxis.x + yaxis.y ) / 2.0;
 
         xaxis = vec2<double> {
-            xaxis_center - 0.5 * 1.01 * xaxis_range,
-            xaxis_center + 0.5 * 1.01 * xaxis_range
+            xaxis.x - 0.01 * xaxis_range,
+            xaxis.y + 0.01 * xaxis_range
         };
         yaxis = vec2<double> {
-            yaxis_center - 0.5 * 1.01 * yaxis_range,
-            yaxis_center + 0.5 * 1.01 * yaxis_range
+            yaxis.x - 0.01 * yaxis_range,
+            yaxis.y + 0.01 * yaxis_range
         };
 
         this->update_xaxis_bounds( xaxis );
@@ -129,7 +132,6 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
     }
     spectra.push_back( Spectrum { polyline, QColor { config::palette[900] } } );
 
-
     const auto& segmentation_statistics = dataset->segmentation_statistics( segmentation );
     for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
     {
@@ -144,6 +146,16 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
             }
             spectra.push_back( Spectrum { polyline, segment->color().qcolor() } );
         }
+    }
+
+    for( const auto& spectrum : _imported_spectra )
+    {
+        for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
+        {
+            const auto yscreen = this->world_to_screen_y( spectrum.values[channel_index] );
+            polyline[channel_index].setY( yscreen );
+        }
+        spectra.push_back( Spectrum { polyline, spectrum.color } );
     }
 
     if( highlighted_element_index.has_value() )
@@ -455,7 +467,10 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         }
 
         menu.addAction( "Reset View", [this] { this->reset_view(); } );
-        menu.addAction( "Export", [this] { this->export_spectra(); } );
+
+        auto spectra_menu = menu.addMenu( "Spectra" );
+        spectra_menu->addAction( "Export", [this] { this->export_spectra(); } );
+        spectra_menu->addAction( "Import", [this] { this->import_spectra(); } );
         menu.addSeparator();
 
         auto dataset_menu = menu.addMenu( "Dataset" );
@@ -678,7 +693,7 @@ void SpectrumViewer::export_spectra() const
         }
 
         auto stream = QTextStream { &file };
-        stream << "identifier,count,statistic";
+        stream << "identifier,color,count,statistic";
 
         const auto dataset = _database.dataset();
         for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
@@ -687,30 +702,124 @@ void SpectrumViewer::export_spectra() const
         }
         stream << '\n';
 
-        const auto write_statistics = [&stream] ( const QString& identifier, uint32_t element_count, const Dataset::Statistics& statistics )
+        const auto write_statistics = [&stream] ( const QString& identifier, const QColor& color, uint32_t element_count, const Dataset::Statistics& statistics )
         {
-            stream << identifier << "," << element_count << ",average";
+            if( element_count == 0 ) return;
+
+            stream << identifier << "," << color.name() << "," << element_count << ",average";
             for( const auto value : statistics.channel_averages ) stream << ',' << value;
             stream << '\n';
 
-            stream << identifier << "," << element_count << ",minimum";
+            stream << identifier << "," << color.name() << "," << element_count << ",minimum";
             for( const auto value : statistics.channel_minimums ) stream << ',' << value;
             stream << '\n';
 
-            stream << identifier << "," << element_count << ",maximum";
+            stream << identifier << "," << color.name() << "," << element_count << ",maximum";
             for( const auto value : statistics.channel_maximums ) stream << ',' << value;
             stream << '\n';
         };
 
         const auto& statistics = dataset->statistics();
-        write_statistics( "Dataset", dataset->element_count(), statistics );
+        write_statistics( "Dataset", QColor { 0, 0, 0 }, dataset->element_count(), statistics );
 
         const auto& segmentation_statistics = dataset->segmentation_statistics( _database.segmentation() );
         for( uint32_t segment_number = 1; segment_number < _database.segmentation()->segment_count(); ++segment_number )
         {
             const auto& segment = _database.segmentation()->segment( segment_number );
-            write_statistics( segment->identifier(), segment->element_count(), segmentation_statistics[segment_number] );
+            write_statistics( segment->identifier(), segment->color().qcolor(), segment->element_count(), segmentation_statistics[segment_number] );
         }
+    }
+}
+void SpectrumViewer::import_spectra()
+{
+    const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Spectra...", "", "*.csv" );
+    if( !filepath.isEmpty() )
+    {
+        auto file = QFile { filepath };
+        if( !file.open( QFile::ReadOnly | QFile::Text ) )
+        {
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
+            return;
+        }
+
+        auto stream = QTextStream { &file };
+        const auto header = stream.readLine();
+        if( !header.startsWith( "identifier,color,count,statistic" ) )
+        {
+            QMessageBox::critical( nullptr, "", "Invalid file format" );
+            return;
+        }
+
+        const auto dataset = _database.dataset();
+        const auto column_count = header.count( ',' ) + 1;
+        if( column_count != dataset->channel_count() + 4 )
+        {
+            Console::warning( std::format( "Invalid number of columns in spectra: expected {}, got {}", dataset->channel_count() + 4, column_count ) );
+            QMessageBox::critical( nullptr, "", "Invalid number of channels in spectra" );
+            return;
+        }
+
+        auto imported_spectra = std::vector<ImportedSpectrum> {};
+        while( !stream.atEnd() )
+        {
+            const auto line = stream.readLine();
+            const auto fields = line.split( ',' );
+
+            const auto identifier = fields[0];
+            const auto color = QColor { fields[1] };
+            const auto element_count = fields[2].toUInt();
+            const auto statistic = fields[3];
+
+            if( element_count > 0 )
+            {
+                auto values = Array<double>::allocate( dataset->channel_count() );
+                for( uint32_t i = 0; i < dataset->channel_count(); ++i )
+                {
+                    values[i] = fields[i + 4].toDouble();
+                }
+
+                imported_spectra.push_back( ImportedSpectrum { identifier, color, statistic, std::move( values ) } );
+            }
+        }
+
+        auto listwidget = new QListWidget {};
+        listwidget->setSelectionMode( QAbstractItemView::MultiSelection );
+        for( const auto& spectrum : imported_spectra )
+        {
+            auto pixmap = QPixmap { 16, 16 };
+            pixmap.fill( spectrum.color );
+
+            auto item = new QListWidgetItem { QIcon { pixmap }, spectrum.identifier + " (" + spectrum.statistic + ')' };
+            listwidget->addItem( item );
+        }
+
+        auto button_import = new QPushButton { "Import" };
+
+        auto dialog = QDialog {};
+        dialog.setWindowTitle( "Import Spectra..." );
+        dialog.setMinimumSize( 400, 300 );
+
+        auto layout = new QVBoxLayout { &dialog };
+        layout->setContentsMargins( 20, 10, 20, 10 );
+
+        layout->addWidget( listwidget );
+        layout->addItem( new QSpacerItem { 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding } );
+        layout->addWidget( button_import );
+
+        QObject::connect( button_import, &QPushButton::clicked, this, [&]
+        {
+            for( uint32_t spectrum_index = 0; spectrum_index < imported_spectra.size(); ++spectrum_index )
+            {
+                if( listwidget->item( spectrum_index )->isSelected() )
+                {
+                    _imported_spectra.push_back( std::move( imported_spectra[spectrum_index] ) );
+                }
+            }
+
+            dialog.accept();
+            this->update();
+        } );
+        dialog.exec();
     }
 }
 void SpectrumViewer::export_dataset() const
