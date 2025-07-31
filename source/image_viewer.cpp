@@ -197,7 +197,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         _sidebar_rectangle.moveTop( this->rect().center().y() - sidebar_height / 2.0 );
 
         painter.setPen( Qt::NoPen );
-        painter.setBrush( QBrush { QColor { 240, 240, 240, 255 } } );
+        painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
         painter.drawRoundedRect( _sidebar_rectangle, 5.0, 5.0 );
 
         const auto handle_color = _database.active_segment()->color().qcolor();
