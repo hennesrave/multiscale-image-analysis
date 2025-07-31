@@ -8,6 +8,7 @@
 class Colormap;
 class Colormap1D;
 class ColormapRGB;
+class Database;
 class Feature;
 
 class FeatureSelector;
@@ -39,7 +40,7 @@ class Colormap1DViewer : public QWidget
 {
     Q_OBJECT
 public:
-    Colormap1DViewer( Colormap1D& colormap, QSharedPointer<const Collection<Feature>> features );
+    Colormap1DViewer( Colormap1D& colormap, Database& database );
     Colormap1D& colormap() const noexcept;
 
 private:
@@ -70,7 +71,7 @@ class ColormapViewer : public QWidget
 {
     Q_OBJECT
 public:
-    ColormapViewer( QSharedPointer<Collection<Colormap>> colormaps, QSharedPointer<const Collection<Feature>> features );
+    ColormapViewer( Database& database );
 
     QSharedPointer<Colormap> colormap() const noexcept;
     void update_colormap( QSharedPointer<Colormap> colormap );
@@ -82,9 +83,7 @@ private:
     void colormap_appended( QSharedPointer<QObject> object );
     void colormap_removed( QSharedPointer<QObject> object );
 
+    Database& _database;
     QSharedPointer<Colormap> _colormap;
     QWidget* _colormap_widget = nullptr;
-
-    QSharedPointer<Collection<Colormap>> _colormaps;
-    QWeakPointer<const Collection<Feature>> _features;
 };

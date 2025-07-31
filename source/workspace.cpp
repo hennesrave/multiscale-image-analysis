@@ -25,7 +25,7 @@ Workspace::Workspace( Database& database ) : _database { database }
     {
         Console::info( "Creating widgets..." );
         _boxplot_viewer = new BoxplotViewer { database };
-        _colormap_viewer = new ColormapViewer { database.colormaps(), database.features() };
+        _colormap_viewer = new ColormapViewer { database };
         _embedding_viewer = new EmbeddingViewer { database };
         _histogram_viewer = new HistogramViewer { database };
         _image_viewer = new ImageViewer { database };
@@ -91,7 +91,7 @@ Workspace::Workspace( Database& database ) : _database { database }
     else
     {
         _boxplot_viewer = new BoxplotViewer { database };
-        // _colormap_viewer = new ColormapViewer { database.colormaps(), database.features() };
+        // _colormap_viewer = new ColormapViewer { database };
         _embedding_viewer = new EmbeddingViewer { database };
         _histogram_viewer = new HistogramViewer { database };
         // _image_viewer = new ImageViewer { database };

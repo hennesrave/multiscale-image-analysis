@@ -1,5 +1,4 @@
 #pragma once
-#include "feature.hpp"
 #include "segmentation.hpp"
 #include "utility.hpp"
 
@@ -304,54 +303,3 @@ void Dataset::visit( auto&& callable ) const
     else if( auto dataset = dynamic_cast<const TensorDataset<float>*>( this ) ) callable( *dataset );
     else if( auto dataset = dynamic_cast<const TensorDataset<double>*>( this ) ) callable( *dataset );
 }
-
-// ----- DatasetChannelsFeature ----- //
-
-class DatasetChannelsFeature : public Feature
-{
-    Q_OBJECT
-public:
-    enum class Reduction
-    {
-        eAccumulate,
-        eIntegrate
-    };
-
-    enum class BaselineCorrection
-    {
-        eNone,
-        eMinimum,
-        eLinear
-    };
-
-    DatasetChannelsFeature( QSharedPointer<const Dataset> dataset, Range<uint32_t> channel_range, Reduction reduction, BaselineCorrection baseline_correction );
-
-    // Feature interface
-    uint32_t element_count() const noexcept override;
-
-    // Properties
-    QSharedPointer<const Dataset> dataset() const;
-
-    Range<uint32_t> channel_range() const noexcept;
-    void update_channel_range( Range<uint32_t> channels );
-
-    Reduction reduction() const noexcept;
-    void update_reduction( Reduction reduction );
-
-    BaselineCorrection baseline_correction() const noexcept;
-    void update_baseline_correction( BaselineCorrection baseline_correction );
-
-signals:
-    void channel_range_changed( Range<uint32_t> channel_range );
-    void reduction_changed( Reduction reduction );
-    void baseline_correction_changed( BaselineCorrection baseline_correction );
-
-private:
-    void update_identifier();
-    Array<double> compute_values() const override;
-
-    QWeakPointer<const Dataset> _dataset;
-    Range<uint32_t> _channel_range;
-    Reduction _reduction { Reduction::eAccumulate };
-    BaselineCorrection _baseline_correction { BaselineCorrection::eNone };
-};

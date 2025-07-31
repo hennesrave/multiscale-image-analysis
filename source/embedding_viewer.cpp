@@ -425,7 +425,7 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     // Render selection polygon
     if( !_selection_polygon.empty() )
     {
-        const auto stroke_color = _selection_mode == SelectionMode::eGrowSegment ? _database.active_segment()->color().qcolor() : QColor { 200, 200, 200 };
+        const auto stroke_color = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->color().qcolor() : QColor { 200, 200, 200 };
         auto brush_color = stroke_color;
         brush_color.setAlpha( 150 );
 
@@ -460,12 +460,12 @@ void EmbeddingViewer::mousePressEvent( QMouseEvent* event )
     if( event->button() == Qt::LeftButton )
     {
         _selection_polygon.append( event->position() );
-        _selection_mode = SelectionMode::eGrowSegment;
+        _selection_mode = InteractionMode::eGrowSegment;
     }
     else if( event->button() == Qt::RightButton )
     {
         _selection_polygon.append( event->position() );
-        _selection_mode = SelectionMode::eShrinkSegment;
+        _selection_mode = InteractionMode::eShrinkSegment;
     }
 }
 void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
@@ -534,7 +534,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.exec( event->globalPosition().toPoint() );
             }
         }
-        else if( _selection_mode == SelectionMode::eGrowSegment || _selection_mode == SelectionMode::eShrinkSegment )
+        else if( _selection_mode == InteractionMode::eGrowSegment || _selection_mode == InteractionMode::eShrinkSegment )
         {
             auto selection_polygon = Array<vec2<float>>::allocate( _selection_polygon.size() );
             for( qsizetype i = 0; i < _selection_polygon.size(); ++i )
@@ -543,7 +543,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 selection_polygon[i] = vec2<float> { static_cast<float>( world.x() ), static_cast<float>( world.y() ) };
             }
 
-            const auto segment_number = _selection_mode == SelectionMode::eGrowSegment ? _database.active_segment()->number() : 0;
+            const auto segment_number = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->number() : 0;
             const auto segmentation_numbers = _renderer->update_segmentation( _projection_matrix, selection_polygon, segment_number );
 
             auto editor = _database.segmentation()->editor();
@@ -554,7 +554,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
         }
 
         _selection_polygon.clear();
-        _selection_mode = SelectionMode::eNone;
+        _selection_mode = InteractionMode::eNone;
     }
 
     this->update();
@@ -564,7 +564,7 @@ void EmbeddingViewer::mouseMoveEvent( QMouseEvent* event )
 {
     if( event->buttons() & ( Qt::LeftButton | Qt::RightButton ) )
     {
-        if( _selection_mode == SelectionMode::eGrowSegment || _selection_mode == SelectionMode::eShrinkSegment )
+        if( _selection_mode == InteractionMode::eGrowSegment || _selection_mode == InteractionMode::eShrinkSegment )
         {
             _selection_polygon.append( event->position() );
             this->update();

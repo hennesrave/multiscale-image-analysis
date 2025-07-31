@@ -3,7 +3,9 @@
 #include "feature.hpp"
 
 #include <qcombobox.h>
-#include <qstackedlayout.h>
+#include <qlayout.h>
+#include <qmessagebox.h>
+#include <qtoolbutton.h>
 
 FeatureSelector::FeatureSelector( QSharedPointer<const Collection<Feature>> features ) : QWidget {}, _features { features }
 {
@@ -12,7 +14,7 @@ FeatureSelector::FeatureSelector( QSharedPointer<const Collection<Feature>> feat
     _combobox->setSizeAdjustPolicy( QComboBox::AdjustToContents );
     _combobox->setMaximumWidth( 200 );
 
-    auto layout = new QStackedLayout { this };
+    auto layout = new QHBoxLayout { this };
     layout->setContentsMargins( 0, 0, 0, 0 );
     layout->addWidget( _combobox );
 

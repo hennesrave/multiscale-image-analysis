@@ -22,8 +22,12 @@
 #include <qmessagebox.h>
 #include <qmimedata.h>
 #include <qpainter.h>
+#include <qslider.h>
+#include <qstackedlayout.h>
 #include <qtoolbutton.h>
 #include <qwidgetaction.h>
+
+// ----- ImageViewer ----- //
 
 ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { database }, _dataset { database.dataset() }, _segmentation { database.segmentation() }
 {
@@ -31,7 +35,7 @@ ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { databas
     this->setMouseTracking( true );
 
     const auto segmentation = _database.segmentation();
-    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, qOverload<>(&QWidget::update));
+    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, qOverload<>( &QWidget::update ) );
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
 
@@ -54,10 +58,13 @@ void ImageViewer::update_colormap( QSharedPointer<Colormap> colormap )
 void ImageViewer::resizeEvent( QResizeEvent* event )
 {
     QWidget::resizeEvent( event );
+
     this->reset_image_rectangle();
 }
 void ImageViewer::paintEvent( QPaintEvent* event )
 {
+    QWidget::paintEvent( event );
+
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
     painter.fillRect( _image_rectangle, Qt::black );
@@ -125,7 +132,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     // Render selection polygon
     if( !_selection_polygon.empty() )
     {
-        const auto stroke_color = _selection_mode == SelectionMode::eGrowSegment ? _database.active_segment()->color().qcolor() : QColor { 200, 200, 200 };
+        const auto stroke_color = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->color().qcolor() : QColor { 200, 200, 200 };
         auto brush_color = stroke_color;
         brush_color.setAlpha( 150 );
 
@@ -180,6 +187,38 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
         painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
     }
+
+    // Render sidebar
+    {
+        const auto sidebar_width = 20.0;
+        const auto sidebar_height = 150.0;
+
+        _sidebar_rectangle = QRectF { 5.0, 0.0, sidebar_width, sidebar_height };
+        _sidebar_rectangle.moveTop( this->rect().center().y() - sidebar_height / 2.0 );
+
+        painter.setPen( Qt::NoPen );
+        painter.setBrush( QBrush { QColor { 240, 240, 240, 255 } } );
+        painter.drawRoundedRect( _sidebar_rectangle, 5.0, 5.0 );
+
+        const auto handle_color = _database.active_segment()->color().qcolor();
+
+        auto groove_rectangle = _sidebar_rectangle.marginsRemoved( QMarginsF { 8.0, 8.0, 8.0, 8.0 } );
+        const auto handle_position = groove_rectangle.bottom() - _segmentation_opacity * groove_rectangle.height();
+
+        painter.setBrush( QColor { 220, 220, 220 } );
+        painter.drawRoundedRect( groove_rectangle, 2.0, 2.0 );
+
+        groove_rectangle.setTop( handle_position );
+        painter.setBrush( handle_color );
+        painter.drawRoundedRect( groove_rectangle, 2.0, 2.0 );
+
+        auto handle_rectangle = QRectF { groove_rectangle.center().x() - 5.0, handle_position - 5.0, 10.0, 10.0 };
+        const auto hovered = handle_rectangle.contains( _cursor_position );
+
+        painter.setPen( hovered ? QPen { handle_color, 2.0 } : Qt::NoPen );
+        painter.setBrush( QBrush { handle_color } );
+        painter.drawRoundedRect( handle_rectangle, 5.0, 5.0 );
+    }
 }
 void ImageViewer::wheelEvent( QWheelEvent* event )
 {
@@ -200,19 +239,32 @@ void ImageViewer::wheelEvent( QWheelEvent* event )
 
 void ImageViewer::mousePressEvent( QMouseEvent* event )
 {
+    if( _sidebar_rectangle.contains( event->position() ) )
+    {
+        _selection_mode = InteractionMode::eOpacitySlider;
+        return;
+    }
+
     if( event->button() == Qt::LeftButton )
     {
         _selection_polygon.append( event->position() );
-        _selection_mode = SelectionMode::eGrowSegment;
+        _selection_mode = InteractionMode::eGrowSegment;
     }
     else if( event->button() == Qt::RightButton )
     {
         _selection_polygon.append( event->position() );
-        _selection_mode = SelectionMode::eShrinkSegment;
+        _selection_mode = InteractionMode::eShrinkSegment;
     }
 }
 void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
 {
+    if( _selection_mode == InteractionMode::eOpacitySlider )
+    {
+        _selection_mode = InteractionMode::eNone;
+        this->update();
+        return;
+    }
+
     if( event->button() == Qt::LeftButton || event->button() == Qt::RightButton )
     {
         if( _selection_polygon.size() == 1 )
@@ -273,7 +325,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.exec( event->globalPosition().toPoint() );
             }
         }
-        else if( _selection_mode == SelectionMode::eGrowSegment || _selection_mode == SelectionMode::eShrinkSegment )
+        else if( _selection_mode == InteractionMode::eGrowSegment || _selection_mode == InteractionMode::eShrinkSegment )
         {
             const auto rectangle = _selection_polygon.boundingRect().intersected( _image_rectangle );
             if( !rectangle.isEmpty() )
@@ -285,7 +337,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
 
                 const auto spatial_metadata = _dataset->spatial_metadata();
                 const auto active_segment = _database.active_segment();
-                const auto segment_number = _selection_mode == SelectionMode::eGrowSegment ? _database.active_segment()->number() : 0;
+                const auto segment_number = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->number() : 0;
                 auto segmentation_editor = _segmentation->editor();
                 for( auto x = begin.x; x <= end.x; ++x )
                 {
@@ -303,7 +355,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
         }
 
         _selection_polygon.clear();
-        _selection_mode = SelectionMode::eNone;
+        _selection_mode = InteractionMode::eNone;
     }
 
     this->update();
@@ -311,9 +363,18 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
 
 void ImageViewer::mouseMoveEvent( QMouseEvent* event )
 {
+    if( _selection_mode == InteractionMode::eOpacitySlider )
+    {
+        const auto slider_height = _sidebar_rectangle.height();
+        const auto position = std::clamp( event->position().y() - _sidebar_rectangle.top(), 0.0, slider_height );
+        _segmentation_opacity = 1.0 - position / slider_height;
+        this->update();
+        return;
+    }
+
     if( event->buttons() & ( Qt::LeftButton | Qt::RightButton ) )
     {
-        if( _selection_mode == SelectionMode::eGrowSegment || _selection_mode == SelectionMode::eShrinkSegment )
+        if( _selection_mode == InteractionMode::eGrowSegment || _selection_mode == InteractionMode::eShrinkSegment )
         {
             _selection_polygon.append( event->position() );
             this->update();

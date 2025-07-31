@@ -70,7 +70,7 @@ class EmbeddingViewer : public QWidget
 {
 	Q_OBJECT
 public:
-	enum class SelectionMode
+	enum class InteractionMode
 	{
 		eNone,
 		eGrowSegment,
@@ -144,5 +144,5 @@ private:
 
 	QPointF _cursor_position { -1.0, -1.0 };
 	QPolygonF _selection_polygon;
-	SelectionMode _selection_mode = SelectionMode::eNone;
+	InteractionMode _selection_mode = InteractionMode::eNone;
 };

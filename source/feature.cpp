@@ -1,5 +1,7 @@
 #include "feature.hpp"
 
+#include "dataset.hpp"
+
 // ----- Feature ----- //
 
 Feature::Feature()
@@ -180,6 +182,387 @@ Array<double> ElementFilterFeature::compute_values() const
         {
             values[element_index] = feature_values[_element_indices[element_index]];
         } );
+    }
+
+    return values;
+}
+
+// ----- DatasetChannelsFeature ----- //
+
+DatasetChannelsFeature::DatasetChannelsFeature( QSharedPointer<const Dataset> dataset, Range<uint32_t> channel_range, Reduction reduction, BaselineCorrection baseline_correction )
+    : Feature {}, _dataset { dataset }, _channel_range { channel_range }, _reduction { reduction }, _baseline_correction { baseline_correction }
+{
+    QObject::connect( dataset.get(), &Dataset::intensities_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::channel_range_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::reduction_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &DatasetChannelsFeature::baseline_correction_changed, &_values, &ComputedObject::invalidate );
+
+    QObject::connect( this, &DatasetChannelsFeature::channel_range_changed, this, &DatasetChannelsFeature::update_identifier );
+    this->update_identifier();
+}
+
+uint32_t DatasetChannelsFeature::element_count() const noexcept
+{
+    return _dataset.lock()->element_count();
+}
+
+QSharedPointer<const Dataset> DatasetChannelsFeature::dataset() const
+{
+    return _dataset.lock();
+}
+
+Range<uint32_t> DatasetChannelsFeature::channel_range() const noexcept
+{
+    return _channel_range;
+}
+void DatasetChannelsFeature::update_channel_range( Range<uint32_t> channel_range )
+{
+    if( _channel_range != channel_range )
+    {
+        if( channel_range.lower > channel_range.upper )
+        {
+            std::swap( channel_range.lower, channel_range.upper );
+        }
+        _channel_range = channel_range;
+        emit channel_range_changed( _channel_range );
+    }
+}
+
+DatasetChannelsFeature::Reduction DatasetChannelsFeature::reduction() const noexcept
+{
+    return _reduction;
+}
+void DatasetChannelsFeature::update_reduction( Reduction reduction )
+{
+    if( _reduction != reduction )
+    {
+        _reduction = reduction;
+        emit reduction_changed( _reduction );
+    }
+}
+
+DatasetChannelsFeature::BaselineCorrection DatasetChannelsFeature::baseline_correction() const noexcept
+{
+    return _baseline_correction;
+}
+void DatasetChannelsFeature::update_baseline_correction( BaselineCorrection baseline_correction )
+{
+    if( _baseline_correction != baseline_correction )
+    {
+        _baseline_correction = baseline_correction;
+        emit baseline_correction_changed( _baseline_correction );
+    }
+}
+
+void DatasetChannelsFeature::update_identifier()
+{
+    if( const auto dataset = _dataset.lock() )
+    {
+        if( _channel_range.lower == _channel_range.upper )
+        {
+            _identifier.update_automatic_value( "Channel " + dataset->channel_identifier( _channel_range.lower ) );
+        }
+        else if( _channel_range.lower < _channel_range.upper )
+        {
+            _identifier.update_automatic_value( "Channel " + dataset->channel_identifier( _channel_range.lower ) + " to " + dataset->channel_identifier( _channel_range.upper ) );
+        }
+    }
+    else
+    {
+        _identifier.update_automatic_value( "DatasetChannelsFeature" );
+    }
+}
+Array<double> DatasetChannelsFeature::compute_values() const
+{
+    Console::info( "DatasetChannelsFeature::compute_values" );
+    auto values = Array<double> { this->element_count(), 0.0 };
+
+    if( const auto dataset = _dataset.lock() )
+    {
+        dataset->visit( [&] ( const auto& dataset )
+        {
+            const auto& intensities = dataset.intensities();
+            const auto& channel_positions = dataset.channel_positions();
+
+            const auto gather_value = [&] ( uint32_t element_index, uint32_t channel_index )
+            {
+                return static_cast<double>( intensities.value( { element_index, channel_index } ) );
+            };
+
+            if( _reduction == Reduction::eAccumulate )
+            {
+                if( _baseline_correction == BaselineCorrection::eNone )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+                        for( uint32_t channel_index = _channel_range.lower; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            value += gather_value( element_index, channel_index );
+                        }
+                    } );
+                }
+                else if( _baseline_correction == BaselineCorrection::eMinimum )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+                        auto minimum_intensity = std::numeric_limits<double>::max();
+
+                        for( uint32_t channel_index = _channel_range.lower; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            const auto intensity = gather_value( element_index, channel_index );
+                            value += intensity;
+                            minimum_intensity = std::min( minimum_intensity, intensity );
+                        }
+
+                        value -= minimum_intensity * ( _channel_range.upper - _channel_range.lower + 1 );
+                    } );
+                }
+                else if( _baseline_correction == BaselineCorrection::eLinear )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+
+                        const auto first_channel = channel_positions[_channel_range.lower];
+                        const auto first_intensity = gather_value( element_index, _channel_range.lower );
+
+                        const auto last_channel = channel_positions[_channel_range.upper];
+                        const auto last_intensity = gather_value( element_index, _channel_range.upper );
+
+                        for( uint32_t channel_index = _channel_range.lower; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            const auto intensity = gather_value( element_index, channel_index );
+                            const auto t = ( channel_positions[channel_index] - first_channel ) / ( last_channel - first_channel );
+                            const auto intensity_correction = first_intensity + t * ( last_intensity - first_intensity );
+                            value += intensity - intensity_correction;
+                        }
+                    } );
+                }
+            }
+            else if( _reduction == Reduction::eIntegrate )
+            {
+                if( _baseline_correction == BaselineCorrection::eNone )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+
+                        auto previous_channel = channel_positions[_channel_range.lower];
+                        auto previous_intensity = gather_value( element_index, _channel_range.lower );
+
+                        for( uint32_t channel_index = _channel_range.lower + 1; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            const auto channel = channel_positions[channel_index];
+                            const auto intensity = gather_value( element_index, channel_index );
+                            value += ( channel - previous_channel ) * ( previous_intensity + intensity ) / 2.0;
+                            previous_channel = channel;
+                            previous_intensity = intensity;
+                        }
+                    } );
+                }
+                else if( _baseline_correction == BaselineCorrection::eMinimum )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+
+                        auto previous_channel = channel_positions[_channel_range.lower];
+                        auto previous_intensity = gather_value( element_index, _channel_range.lower );
+
+                        auto minimum_intensity = previous_intensity;
+
+                        for( uint32_t channel_index = _channel_range.lower + 1; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            const auto channel = channel_positions[channel_index];
+                            const auto intensity = gather_value( element_index, channel_index );
+                            value += ( channel - previous_channel ) * ( previous_intensity + intensity ) / 2.0;
+                            previous_channel = channel;
+                            previous_intensity = intensity;
+
+                            minimum_intensity = std::min( minimum_intensity, intensity );
+                        }
+
+                        value -= minimum_intensity * ( channel_positions[_channel_range.upper] - channel_positions[_channel_range.lower] );
+                    } );
+                }
+                else if( _baseline_correction == BaselineCorrection::eLinear )
+                {
+                    utility::iterate_parallel<uint32_t>( 0, dataset.element_count(), [&] ( uint32_t element_index )
+                    {
+                        auto& value = values[element_index] = 0.0;
+
+                        auto previous_channel = channel_positions[_channel_range.lower];
+                        auto previous_intensity = gather_value( element_index, _channel_range.lower );
+
+                        const auto first_channel = previous_channel;
+                        const auto first_intensity = previous_intensity;
+
+                        for( uint32_t channel_index = _channel_range.lower + 1; channel_index <= _channel_range.upper; ++channel_index )
+                        {
+                            const auto channel = channel_positions[channel_index];
+                            const auto intensity = gather_value( element_index, channel_index );
+                            value += ( channel - previous_channel ) * ( previous_intensity + intensity ) / 2.0;
+                            previous_channel = channel;
+                            previous_intensity = intensity;
+                        }
+
+                        value -= ( previous_channel - first_channel ) * ( previous_intensity + first_intensity ) / 2.0;
+                    } );
+                }
+            }
+        } );
+    }
+
+    return values;
+}
+
+// ----- CombinationFeature ----- //
+
+CombinationFeature::CombinationFeature( QSharedPointer<const Feature> first_feature, QSharedPointer<const Feature> second_feature, Operation operation ) : Feature {}
+{
+    this->update_first_feature( first_feature );
+    this->update_second_feature( second_feature );
+    this->update_operation( operation );
+
+    QObject::connect( this, &CombinationFeature::first_feature_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &CombinationFeature::second_feature_changed, &_values, &ComputedObject::invalidate );
+    QObject::connect( this, &CombinationFeature::operation_changed, &_values, &ComputedObject::invalidate );
+
+    QObject::connect( this, &CombinationFeature::first_feature_changed, this, &CombinationFeature::update_identifier );
+    QObject::connect( this, &CombinationFeature::second_feature_changed, this, &CombinationFeature::update_identifier );
+    QObject::connect( this, &CombinationFeature::operation_changed, this, &CombinationFeature::update_identifier );
+    this->update_identifier();
+}
+
+uint32_t CombinationFeature::element_count() const noexcept
+{
+    const auto first = _first_feature.lock();
+    const auto second = _second_feature.lock();
+    return first && second ? std::min( first->element_count(), second->element_count() ) : 0;
+}
+
+QSharedPointer<const Feature> CombinationFeature::first_feature() const
+{
+    return _first_feature.lock();
+}
+void CombinationFeature::update_first_feature( QSharedPointer<const Feature> feature )
+{
+    if( _first_feature != feature )
+    {
+        if( auto feature = _first_feature.lock() )
+        {
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
+        }
+
+        if( _first_feature = feature )
+        {
+            QObject::connect( feature.get(), &Feature::values_changed, &_values, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &Feature::identifier_changed, this, &CombinationFeature::update_identifier );
+            QObject::connect( feature.get(), &Feature::destroyed, [this] { emit first_feature_changed( nullptr ); } );
+        }
+        emit first_feature_changed( feature );
+    }
+}
+
+QSharedPointer<const Feature> CombinationFeature::second_feature() const
+{
+    return _second_feature.lock();
+}
+void CombinationFeature::update_second_feature( QSharedPointer<const Feature> feature )
+{
+    if( _second_feature != feature )
+    {
+        if( auto feature = _second_feature.lock() )
+        {
+            QObject::disconnect( feature.get(), nullptr, this, nullptr );
+        }
+
+        if( _second_feature = feature )
+        {
+            QObject::connect( feature.get(), &Feature::values_changed, &_values, &ComputedObject::invalidate );
+            QObject::connect( feature.get(), &Feature::identifier_changed, this, &CombinationFeature::update_identifier );
+            QObject::connect( feature.get(), &Feature::destroyed, [this] { emit second_feature_changed( nullptr ); } );
+        }
+        emit second_feature_changed( feature );
+    }
+}
+
+CombinationFeature::Operation CombinationFeature::operation() const noexcept
+{
+    return _operation;
+}
+void CombinationFeature::update_operation( Operation operation )
+{
+    if( _operation != operation )
+    {
+        _operation = operation;
+        emit operation_changed( operation );
+    }
+}
+
+void CombinationFeature::update_identifier()
+{
+    auto identifier = QString {};
+
+    identifier += '(';
+    if( auto feature = _first_feature.lock() ) identifier += feature->identifier();
+    identifier += ')';
+
+    if( _operation == Operation::eAddition ) identifier += " + ";
+    else if( _operation == Operation::eSubtraction ) identifier += " - ";
+    else if( _operation == Operation::eMultiplication ) identifier += " \u00d7 ";
+    else if( _operation == Operation::eDivision ) identifier += " \u00f7 ";
+
+    identifier += '(';
+    if( auto feature = _second_feature.lock() ) identifier += feature->identifier();
+    identifier += ')';
+
+    _identifier.update_automatic_value( identifier );
+}
+Array<double> CombinationFeature::compute_values() const
+{
+    Console::info( "CombinationFeature::compute_values" );
+    auto values = Array<double> { this->element_count(), 0.0 };
+
+    const auto first = _first_feature.lock();
+    const auto second = _second_feature.lock();
+
+    if( first && second )
+    {
+        if( _operation == Operation::eAddition )
+        {
+            utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
+            {
+                values[element_index] = first->values()[element_index] + second->values()[element_index];
+            } );
+        }
+        else if( _operation == Operation::eSubtraction )
+        {
+            utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
+            {
+                values[element_index] = first->values()[element_index] - second->values()[element_index];
+            } );
+        }
+        else if( _operation == Operation::eMultiplication )
+        {
+            utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
+            {
+                values[element_index] = first->values()[element_index] * second->values()[element_index];
+            } );
+        }
+        else if( _operation == Operation::eDivision )
+        {
+            utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
+            {
+                values[element_index] = first->values()[element_index] / second->values()[element_index];
+            } );
+        }
+        else
+        {
+            Console::error( "CombinationFeature::compute_values: Unsupported operation" );
+        }
     }
 
     return values;

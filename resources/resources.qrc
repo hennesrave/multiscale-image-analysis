@@ -7,5 +7,6 @@
         <file>invert.svg</file>
         <file>delete.svg</file>
         <file>add.svg</file>
+        <file>settings.svg</file>
     </qresource>
 </RCC>

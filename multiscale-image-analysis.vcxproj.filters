@@ -123,6 +123,9 @@
     <ClCompile Include="source\filestream.cpp">
       <Filter>Source Files\utility</Filter>
     </ClCompile>
+    <ClCompile Include="source\feature_manager.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -210,6 +213,9 @@
     </QtMoc>
     <QtMoc Include="source\boxplot.hpp">
       <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\feature_manager.hpp">
+      <Filter>Header Files\application\widgets</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

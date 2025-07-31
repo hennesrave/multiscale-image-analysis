@@ -5,15 +5,18 @@
 #include <qsharedpointer.h>
 #include <qwidget.h>
 
+// ----- ImageViewer ----- //
+
 class ImageViewer : public QWidget
 {
     Q_OBJECT
 public:
-    enum class SelectionMode
+    enum class InteractionMode
     {
         eNone,
         eGrowSegment,
         eShrinkSegment,
+        eOpacitySlider
     };
 
     ImageViewer( Database& database );
@@ -48,7 +51,9 @@ private:
     double _segmentation_opacity = 0.5;
 
     QRectF _image_rectangle;
+    QRectF _sidebar_rectangle;
+
     QPointF _cursor_position;
     QPolygonF _selection_polygon;
-    SelectionMode _selection_mode = SelectionMode::eNone;
+    InteractionMode _selection_mode = InteractionMode::eNone;
 };

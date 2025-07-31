@@ -114,6 +114,7 @@
     <ClCompile Include="source\embedding_creator.cpp" />
     <ClCompile Include="source\embedding_viewer.cpp" />
     <ClCompile Include="source\feature.cpp" />
+    <ClCompile Include="source\feature_manager.cpp" />
     <ClCompile Include="source\feature_selector.cpp" />
     <ClCompile Include="source\filestream.cpp" />
     <ClCompile Include="source\histogram.cpp" />
@@ -154,6 +155,7 @@
     <ClInclude Include="source\dataset_importer.hpp" />
     <QtMoc Include="source\histogram.hpp" />
     <QtMoc Include="source\plotting_widget.hpp" />
+    <QtMoc Include="source\feature_manager.hpp" />
     <ClInclude Include="source\filestream.hpp" />
     <ClInclude Include="source\python.hpp" />
     <QtMoc Include="source\segmentation.hpp" />

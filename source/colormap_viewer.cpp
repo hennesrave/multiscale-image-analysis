@@ -1,7 +1,9 @@
 #include "colormap_viewer.hpp"
 
 #include "colormap.hpp"
+#include "database.hpp"
 #include "feature.hpp"
+#include "feature_manager.hpp"
 #include "feature_selector.hpp"
 #include "plotting_widget.hpp"
 #include "utility.hpp"
@@ -74,10 +76,10 @@ void Colormap1DPreview::mousePressEvent( QMouseEvent* event )
 
 // ----- Colormap1DViewer ----- //
 
-Colormap1DViewer::Colormap1DViewer( Colormap1D& colormap, QSharedPointer<const Collection<Feature>> features )
+Colormap1DViewer::Colormap1DViewer( Colormap1D& colormap, Database& database )
     : QWidget {}
     , _colormap { colormap }
-    , _feature_selector { new FeatureSelector { features } }
+    , _feature_selector { new FeatureSelector { database.features() } }
     , _colormap_range { new RangeInput { colormap.lower(), colormap.upper() } }
     , _colormap_preview { new Colormap1DPreview { colormap } }
     , _colormap_axis { new PlottingWidget }
@@ -93,11 +95,15 @@ Colormap1DViewer::Colormap1DViewer( Colormap1D& colormap, QSharedPointer<const C
     _colormap_axis->update_xaxis_bounds( vec2<double>{ _colormap.lower().value(), _colormap.upper().value() } );
     _colormap_axis->update_xaxis_domain( vec2<double>{ _colormap.lower().value(), _colormap.upper().value() } );
 
+    auto button_feature_manager = new QToolButton {};
+    button_feature_manager->setIcon( QIcon( ":/settings.svg" ) );
+
     auto header = new QHBoxLayout {};
     header->setContentsMargins( 5, 0, 0, 3 );
     header->setSpacing( 5 );
 
     header->addWidget( _feature_selector );
+    header->addWidget( button_feature_manager );
     header->addStretch( 1 );
     header->addWidget( _colormap_range );
 
@@ -111,6 +117,10 @@ Colormap1DViewer::Colormap1DViewer( Colormap1D& colormap, QSharedPointer<const C
     QObject::connect( _feature_selector, &FeatureSelector::selected_feature_changed, this, [this] ( QSharedPointer<Feature> feature )
     {
         _colormap.update_feature( feature );
+    } );
+    QObject::connect( button_feature_manager, &QToolButton::clicked, this, [&database]
+    {
+        FeatureManager::execute( database );
     } );
     QObject::connect( &_colormap.lower(), &Override<double>::value_changed, this, [this]
     {
@@ -140,14 +150,15 @@ ColormapRGBViewer::ColormapRGBViewer( ColormapRGB& colormap ) : QWidget {}, _col
 
 // ----- ColormapViewer ----- //
 
-ColormapViewer::ColormapViewer( QSharedPointer<Collection<Colormap>> colormaps, QSharedPointer<const Collection<Feature>> features ) : QWidget {}, _colormaps { colormaps }, _features { features }
+ColormapViewer::ColormapViewer( Database& database ) : QWidget {}, _database { database }
 {
     auto layout = new QVBoxLayout { this };
     layout->setContentsMargins( 5, 5, 5, 5 );
     layout->addWidget( _colormap_widget = new QWidget );
 
-    QObject::connect( _colormaps.data(), &CollectionObject::object_appended, this, &ColormapViewer::colormap_appended );
-    QObject::connect( _colormaps.data(), &CollectionObject::object_removed, this, &ColormapViewer::colormap_removed );
+    const auto colormaps = _database.colormaps();
+    QObject::connect( colormaps.get(), &CollectionObject::object_appended, this, &ColormapViewer::colormap_appended );
+    QObject::connect( colormaps.get(), &CollectionObject::object_removed, this, &ColormapViewer::colormap_removed );
 }
 
 QSharedPointer<Colormap> ColormapViewer::colormap() const noexcept
@@ -162,7 +173,7 @@ void ColormapViewer::update_colormap( QSharedPointer<Colormap> colormap )
 
         if( auto colormap_1d = colormap.dynamicCast<Colormap1D>() )
         {
-            auto colormap_widget = new Colormap1DViewer { *colormap_1d, _features.lock() };
+            auto colormap_widget = new Colormap1DViewer { *colormap_1d, _database };
             this->layout()->replaceWidget( _colormap_widget, colormap_widget );
             _colormap_widget = colormap_widget;
         }
