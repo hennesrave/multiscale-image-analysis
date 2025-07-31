@@ -117,6 +117,7 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
     {
         QPolygonF polyline;
         QColor color;
+        std::optional<uint32_t> imported_spectrum_index;
     };
     auto spectra = std::vector<Spectrum> {};
 
@@ -148,14 +149,15 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
         }
     }
 
-    for( const auto& spectrum : _imported_spectra )
+    for( uint32_t spectrum_index = 0; spectrum_index < _imported_spectra.size(); ++spectrum_index )
     {
+        const auto& spectrum = _imported_spectra[spectrum_index];
         for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
         {
             const auto yscreen = this->world_to_screen_y( spectrum.values[channel_index] );
             polyline[channel_index].setY( yscreen );
         }
-        spectra.push_back( Spectrum { polyline, spectrum.color } );
+        spectra.push_back( Spectrum { polyline, spectrum.color, spectrum_index } );
     }
 
     if( highlighted_element_index.has_value() )
@@ -288,6 +290,7 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
             double distance = std::numeric_limits<double>::max();
             QPointF screen;
             QColor color;
+            std::optional<uint32_t> imported_spectrum_index;
         } hovered_value;
 
         for( const auto& spectrum : spectra )
@@ -296,7 +299,7 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
             const auto distance = std::abs( yscreen - _cursor_position.y() );
             if( distance < hovered_value.distance )
             {
-                hovered_value = { distance, spectrum.polyline[*highlighted_channel_index], spectrum.color };
+                hovered_value = { distance, spectrum.polyline[*highlighted_channel_index], spectrum.color, spectrum.imported_spectrum_index };
             }
         }
 
@@ -334,6 +337,8 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
             painter.setPen( Qt::black );
             painter.drawText( rectangle, Qt::AlignCenter, string );
         }
+
+        _hovered_imported_spectrum_index = hovered_value.imported_spectrum_index;
     }
 
     painter.setClipRect( this->rect() );
@@ -382,6 +387,17 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
     else if( event->button() == Qt::RightButton )
     {
         auto menu = QMenu {};
+
+        if( _hovered_imported_spectrum_index.has_value() )
+        {
+            menu.addAction( "Remove Spectrum", [this]
+            {
+                _imported_spectra.erase( _imported_spectra.begin() + *_hovered_imported_spectrum_index );
+                _hovered_imported_spectrum_index = std::nullopt;
+                this->update();
+            } );
+            menu.addSeparator();
+        }
 
         if( auto feature = _hovered_feature.feature.lock(); feature && feature->channel_range().x != feature->channel_range().y )
         {
@@ -471,6 +487,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         auto spectra_menu = menu.addMenu( "Spectra" );
         spectra_menu->addAction( "Export", [this] { this->export_spectra(); } );
         spectra_menu->addAction( "Import", [this] { this->import_spectra(); } );
+
         menu.addSeparator();
 
         auto dataset_menu = menu.addMenu( "Dataset" );
@@ -791,6 +808,7 @@ void SpectrumViewer::import_spectra()
 
             auto item = new QListWidgetItem { QIcon { pixmap }, spectrum.identifier + " (" + spectrum.statistic + ')' };
             listwidget->addItem( item );
+            item->setSelected( spectrum.identifier != "Dataset" && spectrum.statistic == "average" );
         }
 
         auto button_import = new QPushButton { "Import" };

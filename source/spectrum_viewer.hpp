@@ -61,7 +61,9 @@ private:
     void export_dataset() const;
 
     Database& _database;
+
     std::vector<ImportedSpectrum> _imported_spectra;
+    std::optional<uint32_t> _hovered_imported_spectrum_index;
 
     StatisticsMode _statistics_mode = StatisticsMode::eAverage;
     VisualizationMode _visualization_mode = VisualizationMode::eLine;
