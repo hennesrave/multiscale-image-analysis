@@ -7,7 +7,8 @@
 #include <qmessagebox.h>
 #include <qtoolbutton.h>
 
-FeatureSelector::FeatureSelector( QSharedPointer<const Collection<Feature>> features ) : QWidget {}, _features { features }
+FeatureSelector::FeatureSelector( QSharedPointer<const Collection<Feature>> features, const std::function<bool( QSharedPointer<Feature> )>& filter )
+    : QWidget {}, _features { features }, _filter { filter }
 {
     _combobox = new QComboBox {};
     _combobox->setPlaceholderText( "Select Feature..." );
@@ -31,9 +32,18 @@ FeatureSelector::FeatureSelector( QSharedPointer<const Collection<Feature>> feat
     }
 }
 
+QSharedPointer<Feature> FeatureSelector::selected_feature() const
+{
+    return _combobox->currentData().value<QWeakPointer<Feature>>().lock();
+}
+void FeatureSelector::update_selected_feature( QSharedPointer<Feature> feature )
+{
+    _combobox->setCurrentIndex( _combobox->findData( QVariant::fromValue( QWeakPointer<Feature>( feature ) ) ) );
+}
+
 void FeatureSelector::object_appended( QSharedPointer<QObject> object )
 {
-    if( auto feature = object.objectCast<Feature>() )
+    if( auto feature = object.objectCast<Feature>(); feature && ( !_filter || _filter( feature ) ) )
     {
         _combobox->addItem( feature->identifier(), QVariant::fromValue( QWeakPointer<Feature>( feature ) ) );
         _combobox->setItemData( _combobox->count() - 1, feature->identifier(), Qt::ToolTipRole );

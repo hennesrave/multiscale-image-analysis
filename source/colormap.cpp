@@ -593,13 +593,13 @@ void Colormap1D::on_feature_extremes_changed()
     else
     {
         _lower.update_automatic_value( 0.0 );
-        _upper.update_automatic_value( 1.0 );
+        _upper.update_automatic_value( 0.0 );
     }
 }
 
 Array<vec4<float>> Colormap1D::compute_colors() const
 {
-    auto colors = Array<vec4<float>> { this->element_count(), vec4<float>{ 0.0f, 0.0f, 0.0f, 1.0f } };
+    auto colors = Array<vec4<float>> { this->element_count(), vec4<float> { 0.0f, 0.0f, 0.0f, 1.0f } };
 
     if( const auto feature = _feature.lock() )
     {

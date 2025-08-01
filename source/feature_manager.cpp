@@ -1,10 +1,12 @@
 #include "feature_manager.hpp"
 
 #include "database.hpp"
+#include "feature_selector.hpp"
 #include "string_input.hpp"
 
 #include <qapplication.h>
 #include <qcolordialog.h>
+#include <qcombobox.h>
 #include <qlayout.h>
 #include <qlineedit.h>
 #include <qmessagebox.h>
@@ -14,11 +16,11 @@
 FeatureManager::FeatureManager( Database& database ) : QDialog {}, _database { database }
 {
     this->setWindowTitle( "Feature Manager" );
-    this->setMinimumSize( 300, 400 );
+    this->setMinimumSize( 400, 500 );
 
     _features_layout = new QVBoxLayout {};
     _features_layout->setContentsMargins( 0, 0, 0, 0 );
-    _features_layout->setSpacing( 2 );
+    _features_layout->setSpacing( 5 );
 
     auto button_create_feature = new QPushButton { "Create Feature" };
 
@@ -96,7 +98,51 @@ void FeatureManager::feature_appended( QSharedPointer<QObject> object )
     properties->setContentsMargins( 20, 0, 0, 0 );
     properties->setSpacing( 2 );
 
-    // TODO
+    if( auto combination_feature = feature.objectCast<CombinationFeature>() )
+    {
+        auto first = new FeatureSelector { _database.features(), [pointer = combination_feature.get()] ( QSharedPointer<const Feature> feature )
+        {
+            return feature.get() != pointer;
+        } };
+        first->update_selected_feature( combination_feature->first_feature().constCast<Feature>() );
+
+        auto operation = new QComboBox {};
+        operation->addItem( "+", QVariant::fromValue( CombinationFeature::Operation::eAddition ) );
+        operation->addItem( "-", QVariant::fromValue( CombinationFeature::Operation::eSubtraction ) );
+        operation->addItem( "\u00d7", QVariant::fromValue( CombinationFeature::Operation::eMultiplication ) );
+        operation->addItem( "\u00f7", QVariant::fromValue( CombinationFeature::Operation::eDivision ) );
+        operation->setCurrentIndex( operation->findData( QVariant::fromValue( combination_feature->operation() ) ) );
+
+        auto second = new FeatureSelector { _database.features(), [pointer = combination_feature.get()] ( QSharedPointer<const Feature> feature )
+        {
+            return feature.get() != pointer;
+        } };
+        second->update_selected_feature( combination_feature->second_feature().constCast<Feature>() );
+
+        QObject::connect( first, &FeatureSelector::selected_feature_changed, this, [this, combination_feature] ( QSharedPointer<const Feature> feature )
+        {
+            combination_feature->update_first_feature( feature );
+        } );
+        QObject::connect( operation, &QComboBox::currentIndexChanged, this, [this, combination_feature, operation] ( int index )
+        {
+            combination_feature->update_operation( static_cast<CombinationFeature::Operation>( operation->itemData( index ).value<CombinationFeature::Operation>() ) );
+        } );
+
+        QObject::connect( second, &FeatureSelector::selected_feature_changed, this, [this, combination_feature] ( QSharedPointer<const Feature> feature )
+        {
+            combination_feature->update_second_feature( feature );
+        } );
+
+        auto row = new QHBoxLayout {};
+        row->setContentsMargins( 0, 0, 0, 0 );
+        row->setSpacing( 5 );
+
+        row->addWidget( first, 1 );
+        row->addWidget( operation );
+        row->addWidget( second, 1 );
+
+        properties->addLayout( row );
+    }
 
     auto container_widget = new QWidget {};
     auto container_layout = new QVBoxLayout { container_widget };

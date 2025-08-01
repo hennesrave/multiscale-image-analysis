@@ -163,9 +163,12 @@ void ImageViewer::paintEvent( QPaintEvent* event )
                 if( auto feature = colormap_1d->feature() )
                 {
                     const auto& feature_values = feature->values();
-                    const auto value = feature_values[*element_index];
-                    labels_string += QString { "\nvalue: " };
-                    values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
+                    if( feature_values.size() > *element_index )
+                    {
+                        const auto value = feature_values[*element_index];
+                        labels_string += QString { "\nvalue: " };
+                        values_string += '\n' + QString::number( value, 'f', std::min( 5, utility::compute_precision( value ) ) );
+                    }
                 }
             }
         }

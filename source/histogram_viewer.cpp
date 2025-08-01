@@ -213,6 +213,31 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
     }
 
     painter.setClipRect( this->rect() );
+
+    // Render current feature
+    if( const auto feature = _histogram.feature() )
+    {
+        const auto& string = feature->identifier();
+
+        painter.save();
+        auto font = painter.font();
+        font.setBold( true );
+        painter.setFont( font );
+
+        auto rectangle = painter.fontMetrics().boundingRect( string ).toRectF().marginsAdded( QMarginsF { 5.0, 2.0, 5.0, 2.0 } );
+        rectangle.moveCenter( content_rectangle.center() );
+        rectangle.moveTop( content_rectangle.top() );
+
+        painter.setPen( Qt::NoPen );
+        painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
+        painter.drawRoundedRect( rectangle, 2.0, 2.0 );
+
+        painter.setPen( Qt::black );
+        painter.drawText( rectangle, Qt::AlignCenter, string );
+
+        painter.restore();
+    }
+
     PlottingWidget::paintEvent( event );
 }
 

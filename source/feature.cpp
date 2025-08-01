@@ -179,10 +179,10 @@ Array<double> ElementFilterFeature::compute_values() const
     Console::info( "ElementFilterFeature::compute_values" );
     auto values = Array<double> { this->element_count(), 0.0 };
 
-    if( const auto feature = _feature.lock() )
+    if( const auto feature = _feature.lock(); feature && feature->element_count() == this->element_count() )
     {
         const auto& feature_values = feature->values();
-        utility::iterate_parallel( 0u, this->element_count(), [&] ( uint32_t element_index )
+        utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
         {
             values[element_index] = feature_values[_element_indices[element_index]];
         } );
@@ -535,33 +535,47 @@ Array<double> CombinationFeature::compute_values() const
 
     if( first && second )
     {
+        const auto& first_values = first->values();
+        const auto& second_values = second->values();
+
         if( _operation == Operation::eAddition )
         {
             utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
             {
-                values[element_index] = first->values()[element_index] + second->values()[element_index];
+                values[element_index] = first_values[element_index] + second_values[element_index];
             } );
         }
         else if( _operation == Operation::eSubtraction )
         {
             utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
             {
-                values[element_index] = first->values()[element_index] - second->values()[element_index];
+                values[element_index] = first_values[element_index] - second_values[element_index];
             } );
         }
         else if( _operation == Operation::eMultiplication )
         {
             utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
             {
-                values[element_index] = first->values()[element_index] * second->values()[element_index];
+                values[element_index] = first_values[element_index] * second_values[element_index];
             } );
         }
         else if( _operation == Operation::eDivision )
         {
+            auto contains_nan = false;
+
             utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
             {
-                values[element_index] = first->values()[element_index] / second->values()[element_index];
+                values[element_index] = first_values[element_index] / second_values[element_index];
+                if( std::isnan( values[element_index] ) )
+                {
+                    contains_nan = true;
+                }
             } );
+
+            if( contains_nan )
+            {
+                Console::warning( "CombinationFeature::compute_values: Division by zero" );
+            }
         }
         else
         {

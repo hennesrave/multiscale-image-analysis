@@ -101,10 +101,6 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
         const auto yminimum = this->world_to_screen_y( minimum );
         const auto ymaximum = this->world_to_screen_y( maximum );
 
-        const auto yaverage = this->world_to_screen_y( average );
-        const auto ystandard_deviation_upper = this->world_to_screen_y( average + standard_deviation );
-        const auto ystandard_deviation_lower = this->world_to_screen_y( average - standard_deviation );
-
         const auto ylower_quartile = this->world_to_screen_y( lower_quartile );
         const auto yupper_quartile = this->world_to_screen_y( upper_quartile );
         const auto ymedian = this->world_to_screen_y( median );
@@ -123,19 +119,26 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
         painter.setPen( QPen { color, thickness + 1.0 } );
         painter.drawLine( QPointF { xleft, ymedian }, QPointF { xright, ymedian } );
 
-        painter.setPen( QPen { color, thickness, Qt::DashLine } );
-        painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
-        painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_upper } );
-        painter.drawLine( QPointF { xright, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
-        painter.drawLine( QPointF { xright, yaverage }, QPointF { xscreen, ystandard_deviation_upper } );
-        painter.drawLine( QPointF { xleft, yaverage }, QPointF { xright, yaverage } );
+        if( !std::isnan(average) && !std::isnan(standard_deviation) )
+        {
+            const auto yaverage = this->world_to_screen_y( average );
+            const auto ystandard_deviation_upper = this->world_to_screen_y( average + standard_deviation );
+            const auto ystandard_deviation_lower = this->world_to_screen_y( average - standard_deviation );
 
-        painter.setPen( Qt::NoPen );
-        painter.setBrush( color );
-        painter.drawEllipse( QPointF { xscreen, yaverage }, 5.0, 5.0 );
+            painter.setPen( QPen { color, thickness, Qt::DashLine } );
+            painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
+            painter.drawLine( QPointF { xleft, yaverage }, QPointF { xscreen, ystandard_deviation_upper } );
+            painter.drawLine( QPointF { xright, yaverage }, QPointF { xscreen, ystandard_deviation_lower } );
+            painter.drawLine( QPointF { xright, yaverage }, QPointF { xscreen, ystandard_deviation_upper } );
+            painter.drawLine( QPointF { xleft, yaverage }, QPointF { xright, yaverage } );
+        
+            painter.setPen( Qt::NoPen );
+            painter.setBrush( color );
+            painter.drawEllipse( QPointF { xscreen, yaverage }, 5.0, 5.0 );
+        }
     };
 
-    if( auto feature = _feature.lock() )
+    if( const auto feature = _feature.lock() )
     {
         const auto& extremes = feature->extremes();
         const auto& moments = feature->moments();
@@ -222,6 +225,31 @@ void BoxplotViewer::paintEvent( QPaintEvent* event )
     }
 
     painter.setClipRect( this->rect() );
+
+    // Render current feature
+    if( const auto feature = _feature.lock() )
+    {
+        const auto& string = feature->identifier();
+
+        painter.save();
+        auto font = painter.font();
+        font.setBold( true );
+        painter.setFont( font );
+
+        auto rectangle = painter.fontMetrics().boundingRect( string ).toRectF().marginsAdded( QMarginsF { 5.0, 2.0, 5.0, 2.0 } );
+        rectangle.moveCenter( content_rectangle.center() );
+        rectangle.moveTop( content_rectangle.top() );
+
+        painter.setPen( Qt::NoPen );
+        painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
+        painter.drawRoundedRect( rectangle, 2.0, 2.0 );
+
+        painter.setPen( Qt::black );
+        painter.drawText( rectangle, Qt::AlignCenter, string );
+
+        painter.restore();
+    }
+
     PlottingWidget::paintEvent( event );
 }
 
@@ -272,9 +300,17 @@ void BoxplotViewer::on_feature_extremes_changed()
     if( auto feature = _feature.lock() )
     {
         const auto& extremes = feature->extremes();
-        const auto range = extremes.maximum - extremes.minimum;
-        this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
-        this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+        if( extremes.minimum == extremes.maximum )
+        {
+            this->update_yaxis_bounds( { extremes.minimum - 1.0, extremes.maximum + 1.0 } );
+            this->update_yaxis_domain( { extremes.minimum - 1.0, extremes.maximum + 1.0 } );
+        }
+        else
+        {
+            const auto range = extremes.maximum - extremes.minimum;
+            this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+            this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+        }
     }
     else
     {

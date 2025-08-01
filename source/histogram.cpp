@@ -80,6 +80,11 @@ Array<double> Histogram::compute_edges() const
         maximum = extremes.maximum;
     }
 
+    if( minimum == maximum )
+    {
+        maximum += 1.0;
+    }
+
     const auto binsize = ( maximum - minimum ) / _bincount;
     for( uint32_t i = 0; i <= _bincount; ++i )
     {
@@ -209,6 +214,11 @@ Array<double> StackedHistogram::compute_edges() const
         const auto& extremes = feature->extremes();
         minimum = extremes.minimum;
         maximum = extremes.maximum;
+    }
+
+    if( minimum == maximum )
+    {
+        maximum += 1.0;
     }
 
     const auto binsize = ( maximum - minimum ) / _bincount;
