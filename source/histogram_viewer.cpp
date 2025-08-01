@@ -4,6 +4,7 @@
 #include "console.hpp"
 #include "dataset.hpp"
 #include "feature.hpp"
+#include "feature_manager.hpp"
 #include "segmentation.hpp"
 
 #include <qactiongroup.h>
@@ -246,10 +247,9 @@ void HistogramViewer::mousePressEvent( QMouseEvent* event )
     if( event->button() == Qt::RightButton )
     {
         auto context_menu = QMenu { this };
-        auto feature_menu = context_menu.addMenu( "Feature" );
+        auto feature_menu = context_menu.addMenu( "Change Feature" );
 
         const auto features = _database.features();
-
         auto feature_action_group = new QActionGroup { feature_menu };
         feature_action_group->setExclusive( true );
 
@@ -264,6 +264,7 @@ void HistogramViewer::mousePressEvent( QMouseEvent* event )
             action->setChecked( feature == _histogram.feature() );
         }
 
+        context_menu.addAction( "Feature Manager", [this] { FeatureManager::execute( _database ); } );
         context_menu.addAction( "Reset View", [this] { this->reset_view(); } );
         context_menu.addAction( "Export", [this] { this->export_histograms(); } );
 
