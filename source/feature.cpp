@@ -179,7 +179,7 @@ Array<double> ElementFilterFeature::compute_values() const
     Console::info( "ElementFilterFeature::compute_values" );
     auto values = Array<double> { this->element_count(), 0.0 };
 
-    if( const auto feature = _feature.lock(); feature && feature->element_count() == this->element_count() )
+    if( const auto feature = _feature.lock(); feature && feature->element_count() > _element_indices.back() )
     {
         const auto& feature_values = feature->values();
         utility::iterate_parallel( this->element_count(), [&] ( uint32_t element_index )
