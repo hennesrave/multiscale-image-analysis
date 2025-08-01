@@ -11,9 +11,11 @@
 #include <qevent.h>
 #include <qfiledialog.h>
 #include <qlabel.h>
+#include <qlayout.h>
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qpainter.h>
+#include <qspinbox.h>
 #include <qwidgetaction.h>
 
 HistogramViewer::HistogramViewer( Database& database ) : _database { database }
@@ -247,9 +249,19 @@ void HistogramViewer::mousePressEvent( QMouseEvent* event )
     if( event->button() == Qt::RightButton )
     {
         auto context_menu = QMenu { this };
-        auto feature_menu = context_menu.addMenu( "Change Feature" );
+
+        auto spinbox_bincount = new QSpinBox {};
+        spinbox_bincount->setRange( 1, 1000 );
+        spinbox_bincount->setValue( this->bincount() );
+        spinbox_bincount->setSuffix( " bins" );
+        QObject::connect( spinbox_bincount, qOverload<int>( &QSpinBox::valueChanged ), this, &HistogramViewer::update_bincount );
+
+        auto widget_action = new QWidgetAction { &context_menu };
+        widget_action->setDefaultWidget( spinbox_bincount );
+        context_menu.addAction( widget_action );
 
         const auto features = _database.features();
+        auto feature_menu = context_menu.addMenu( "Change Feature" );
         auto feature_action_group = new QActionGroup { feature_menu };
         feature_action_group->setExclusive( true );
 
