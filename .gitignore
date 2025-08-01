@@ -5,6 +5,8 @@ datasets
 external/*
 intermediate
 
+*.qtvscr
+
 !.gitkeep
 !build/python
 !build/python/requirements.txt
