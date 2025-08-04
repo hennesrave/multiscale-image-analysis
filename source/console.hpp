@@ -10,7 +10,7 @@ public:
     static void info( const std::string& message, const std::source_location location = std::source_location::current() );
     static void warning( const std::string& message, const std::source_location location = std::source_location::current() );
     static void error( const std::string& message, const std::source_location location = std::source_location::current() );
-    static void critical( const std::string& message, const std::source_location location = std::source_location::current() );
+    [[noreturn]] static void critical ( const std::string& message, const std::source_location location = std::source_location::current() );
 
 private:
     Console() = delete;

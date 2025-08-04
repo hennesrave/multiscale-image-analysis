@@ -22,6 +22,8 @@
 
 QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& filepath )
 {
+    const auto filename = filepath.filename();
+
     auto filestream = std::ifstream { filepath };
     auto linestring = std::string {};
     std::getline( filestream, linestring, '\n' );
@@ -30,6 +32,10 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     if( linestring.find( "# SPCal Export" ) != std::string::npos )
     {
         return DatasetImporter::from_single_particle_csv( filepath );
+    }
+    else if( std::regex_search( filename.string(), std::regex { R"(line_\d+\.csv)" } ) && linestring.find( "Timestamp" ) == 0 )
+    {
+        return DatasetImporter::from_laser_lines( filepath );
     }
 
     QMessageBox::critical( nullptr, "", "Unsupported file format" );
@@ -508,6 +514,162 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
 
     auto dataset = new TensorDataset<float> { std::move( intensities ), std::move( channels ) };
     dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions[0], dimensions[1] ) );
+    return QSharedPointer<Dataset> { dataset };
+}
+QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem::path& filepath )
+{
+    const auto directory = filepath.parent_path();
+
+    struct Pixel
+    {
+        vec2<uint32_t> coordinates { 0, 0 };
+        std::vector<std::string> intensities {};
+    };
+
+    auto columns = std::vector<std::string> {};
+    auto pixels = std::vector<Pixel> {};
+    auto current_coordinates = vec2<uint32_t> { 0, 0 };
+
+    for( uint32_t file_number = 1; true; ++file_number )
+    {
+        const auto laser_line_filepath = directory / std::format( "line_{}.csv", file_number );
+        if( !std::filesystem::exists( laser_line_filepath ) )
+        {
+            break;
+        }
+
+        auto filestream = std::ifstream { laser_line_filepath };
+        if( !filestream )
+        {
+            Console::error( "Failed to open laser line file: " + laser_line_filepath.string() );
+            QMessageBox::critical( nullptr, "", "Failed to open laser line file", QMessageBox::Ok );
+            return nullptr;
+        }
+
+        Console::info( std::format( "Importing {}...", laser_line_filepath.string() ) );
+
+        auto linestring = std::string {};
+        std::getline( filestream, linestring, '\n' );   // Timestamp
+        std::getline( filestream, linestring, '\n' );   // Laser line number
+        const auto laser_line_number = std::stoul( linestring.substr( linestring.find_first_of( ',' ) + 1 ) );
+        std::getline( filestream, linestring, '\n' );   // Laser line name
+        std::getline( filestream, linestring, '\n' );   // Laser image name
+        std::getline( filestream, linestring, '\n' );   // Starting X
+        std::getline( filestream, linestring, '\n' );   // Starting Y
+        std::getline( filestream, linestring, '\n' );   // Starting Z
+        std::getline( filestream, linestring, '\n' );   // Spot size
+        std::getline( filestream, linestring, '\n' );   // Spot spacing
+        std::getline( filestream, linestring, '\n' );   // Number of shots
+        std::getline( filestream, linestring, '\n' );   // Direction of ablation
+        const auto direction_of_ablation = linestring.substr( linestring.find_first_of( ',' ) + 1 );
+
+        if( laser_line_number != file_number )
+        {
+            Console::error( std::format( "Laser line number mismatch: expected {}, got {}", file_number, laser_line_number ) );
+            QMessageBox::critical( nullptr, "", "Laser line number mismatch", QMessageBox::Ok );
+            return nullptr;
+        }
+
+        if( direction_of_ablation != "0,Left to Right" )
+        {
+            Console::error( "Unsupported direction of ablation: " + direction_of_ablation );
+            QMessageBox::critical( nullptr, "", "Unsupported direction of ablation", QMessageBox::Ok );
+            return nullptr;
+        }
+
+        auto header = std::string {};
+        std::getline( filestream, header, '\n' );
+
+        if( file_number == 1 )
+        {
+            auto linestream = std::stringstream { header };
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore cycle time
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore x
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore y
+
+            auto token = std::string {};
+            while( std::getline( linestream, token, ',' ) )
+            {
+                columns.push_back( token );
+            }
+        }
+
+        if( header.find_first_of( "Cycle time (ms),x[um],y [um]" ) == std::string::npos )
+        {
+            Console::error( "Invalid header in laser line file: " + laser_line_filepath.string() );
+            QMessageBox::critical( nullptr, "", "Invalid header in laser line file", QMessageBox::Ok );
+            return nullptr;
+        }
+
+        current_coordinates.x = 0;
+        while( std::getline( filestream, linestring, '\n' ) && !linestring.empty() )
+        {
+            auto pixel = Pixel {
+                .coordinates = current_coordinates,
+                .intensities = {}
+            };
+            pixel.intensities.reserve( columns.size() );
+
+            auto linestream = std::stringstream { linestring };
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore cycle time
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore x
+            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore y
+
+            auto token = std::string {};
+            while( std::getline( linestream, token, ',' ) )
+            {
+                pixel.intensities.push_back( token );
+            }
+
+            if( pixel.intensities.size() != columns.size() )
+            {
+                Console::error( "Inconsistent number of columns in laser line file: " + laser_line_filepath.string() );
+                QMessageBox::critical( nullptr, "", "Inconsistent number of columns in laser line file", QMessageBox::Ok );
+                return nullptr;
+            }
+
+            pixels.push_back( std::move( pixel ) );
+            ++current_coordinates.x;
+        }
+        ++current_coordinates.y;
+    }
+
+    if( pixels.empty() )
+    {
+        QMessageBox::critical( nullptr, "", "Invalid laser line data", QMessageBox::Ok );
+        return nullptr;
+    }
+
+    auto channel_identifiers = Array<QString> { columns.size(), QString {} };
+    auto channel_positions = Array<double>::allocate( columns.size() );
+    for( uint32_t channel_index = 0; channel_index < columns.size(); ++channel_index )
+    {
+        channel_identifiers[channel_index] = QString::fromStdString( columns[channel_index] );
+        channel_identifiers[channel_index].chop( 4 );
+
+        const auto regex = QRegularExpression { R"(\d+)" };
+        const auto match = regex.match( channel_identifiers[channel_index] );
+        channel_positions[channel_index] = match.captured( 0 ).toDouble();
+    }
+
+    auto intensities = Matrix<double>::allocate( { pixels.size(), channel_positions.size() } );
+    auto spatial_metadata = std::make_unique<Dataset::SpatialMetadata>(
+        pixels.back().coordinates.x + 1,
+        pixels.back().coordinates.y + 1
+    );
+    for( const auto& pixel : pixels )
+    {
+        const auto element_index = spatial_metadata->element_index( pixel.coordinates );
+        for( uint32_t channel_index = 0; channel_index < pixel.intensities.size(); ++channel_index )
+        {
+            const auto intensity = std::stod( pixel.intensities[channel_index] );
+            intensities.update_value( { element_index, channel_index }, intensity );
+        }
+    }
+
+    auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_spatial_metadata( std::move( spatial_metadata ) );
     return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_rpl( const std::filesystem::path& filepath )
