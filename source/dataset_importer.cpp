@@ -551,7 +551,6 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem
         auto linestring = std::string {};
         std::getline( filestream, linestring, '\n' );   // Timestamp
         std::getline( filestream, linestring, '\n' );   // Laser line number
-        const auto laser_line_number = std::stoul( linestring.substr( linestring.find_first_of( ',' ) + 1 ) );
         std::getline( filestream, linestring, '\n' );   // Laser line name
         std::getline( filestream, linestring, '\n' );   // Laser image name
         std::getline( filestream, linestring, '\n' );   // Starting X
@@ -562,13 +561,6 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem
         std::getline( filestream, linestring, '\n' );   // Number of shots
         std::getline( filestream, linestring, '\n' );   // Direction of ablation
         const auto direction_of_ablation = linestring.substr( linestring.find_first_of( ',' ) + 1 );
-
-        if( laser_line_number != file_number )
-        {
-            Console::error( std::format( "Laser line number mismatch: expected {}, got {}", file_number, laser_line_number ) );
-            QMessageBox::critical( nullptr, "", "Laser line number mismatch", QMessageBox::Ok );
-            return nullptr;
-        }
 
         if( direction_of_ablation != "0,Left to Right" )
         {
