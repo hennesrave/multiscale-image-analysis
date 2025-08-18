@@ -482,12 +482,11 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             actions_visualization_mode->addAction( visualization_mode_lollipop );
         }
 
-        menu.addAction( "Reset View", [this] { this->reset_view(); } );
-
         auto spectra_menu = menu.addMenu( "Spectra" );
         spectra_menu->addAction( "Export", [this] { this->export_spectra(); } );
         spectra_menu->addAction( "Import", [this] { this->import_spectra(); } );
 
+        this->populate_context_menu( menu );
         menu.addSeparator();
 
         auto dataset_menu = menu.addMenu( "Dataset" );

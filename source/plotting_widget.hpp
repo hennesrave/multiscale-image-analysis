@@ -1,6 +1,7 @@
 #pragma once
 #include "utility.hpp"
 
+#include <qmenu.h>
 #include <qwidget.h>
 
 class PlottingWidget : public QWidget
@@ -80,6 +81,7 @@ public:
     QPointF screen_to_world( const QPointF& screen ) const;
 
     void reset_view();
+    void populate_context_menu( QMenu& context_menu );
 
 signals:
     void margins_changed( const QMargins& margins );

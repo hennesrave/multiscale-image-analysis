@@ -75,43 +75,6 @@ private:
     decltype( std::chrono::high_resolution_clock::now() ) _start { std::chrono::high_resolution_clock::now() };
 };
 
-// ----- Range ----- //
-
-template<class T> struct Range
-{
-    using value_type = T;
-
-    union
-    {
-        struct
-        {
-            value_type lower;
-            value_type upper;
-        };
-        struct
-        {
-            value_type minimum;
-            value_type maximum;
-        };
-        struct
-        {
-            value_type x;
-            value_type y;
-        };
-    };
-
-    Range( value_type lower = {}, value_type upper = {} ) : lower { lower }, upper { upper } {}
-
-    bool operator==( const Range& other ) const noexcept
-    {
-        return lower == other.lower && upper == other.upper;
-    }
-    bool operator!=( const Range& other ) const noexcept
-    {
-        return lower != other.lower || upper != other.upper;
-    }
-};
-
 // ----- Vector ----- //
 
 template<class T> struct vec2
@@ -639,3 +602,39 @@ private:
     std::function<value_type()> _compute_function;
 };
 
+// ----- Range ----- //
+
+template<class T> struct Range
+{
+    using value_type = T;
+
+    union
+    {
+        struct
+        {
+            value_type lower;
+            value_type upper;
+        };
+        struct
+        {
+            value_type minimum;
+            value_type maximum;
+        };
+        struct
+        {
+            value_type x;
+            value_type y;
+        };
+    };
+
+    Range( value_type lower = {}, value_type upper = {} ) : lower { lower }, upper { upper } {}
+
+    bool operator==( const Range& other ) const noexcept
+    {
+        return lower == other.lower && upper == other.upper;
+    }
+    bool operator!=( const Range& other ) const noexcept
+    {
+        return lower != other.lower || upper != other.upper;
+    }
+};

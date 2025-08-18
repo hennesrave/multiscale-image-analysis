@@ -1,7 +1,13 @@
 #include "plotting_widget.hpp"
 
+#include "number_input.hpp"
+
 #include <qevent.h>
+#include <qlabel.h>
+#include <qlayout.h>
+#include <qmenu.h>
 #include <qpainter.h>
+#include <qwidgetaction.h>
 
 // ----- PlottingWidget ----- //
 
@@ -355,6 +361,66 @@ void PlottingWidget::reset_view()
 
     emit xaxis_domain_changed( _xaxis.domain );
     emit yaxis_domain_changed( _yaxis.domain );
+}
+void PlottingWidget::populate_context_menu( QMenu& context_menu )
+{
+    auto xaxis_label = new QLabel { "X-Axis:" };
+    auto yaxis_label = new QLabel { "Y-Axis:" };
+
+    auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
+    auto xaxis_upper = new Override<double> { _xaxis.bounds.y, _xaxis.domain.y == _xaxis.bounds.y ? std::nullopt : std::optional<double> { _xaxis.domain.y } };
+
+    auto yaxis_lower = new Override<double> { _yaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
+    auto yaxis_upper = new Override<double> { _yaxis.bounds.y, _yaxis.domain.y == _yaxis.bounds.y ? std::nullopt : std::optional<double> { _yaxis.domain.y } };
+
+    auto xaxis_domain_input = new RangeInput { *xaxis_lower, *xaxis_upper };
+    xaxis_lower->setParent( xaxis_domain_input );
+    xaxis_upper->setParent( xaxis_domain_input );
+
+    auto yaxis_domain_input = new RangeInput { *yaxis_lower, *yaxis_upper };
+    yaxis_lower->setParent( yaxis_domain_input );
+    yaxis_upper->setParent( yaxis_domain_input );
+
+    auto xaxis_container_widget = new QWidget { &context_menu };
+    auto xaxis_container_layout = new QHBoxLayout { xaxis_container_widget };
+    xaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
+    xaxis_container_layout->setSpacing( 5 );
+    xaxis_container_layout->addWidget( xaxis_label );
+    xaxis_container_layout->addWidget( xaxis_domain_input );
+
+    auto yaxis_container_widget = new QWidget { &context_menu };
+    auto yaxis_container_layout = new QHBoxLayout { yaxis_container_widget };
+    yaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
+    yaxis_container_layout->setSpacing( 5 );
+    yaxis_container_layout->addWidget( yaxis_label );
+    yaxis_container_layout->addWidget( yaxis_domain_input );
+
+    auto xaxis_widget_action = new QWidgetAction { &context_menu };
+    xaxis_widget_action->setDefaultWidget( xaxis_container_widget );
+
+    auto yaxis_widget_action = new QWidgetAction { &context_menu };
+    yaxis_widget_action->setDefaultWidget( yaxis_container_widget );
+
+    QObject::connect( xaxis_lower, &Override<double>::value_changed, this, [=]
+    {
+        this->update_xaxis_domain( vec2<double> { xaxis_lower->value(), _xaxis.domain.y } );
+    } );
+    QObject::connect( xaxis_upper, &Override<double>::value_changed, this, [=]
+    {
+        this->update_xaxis_domain( vec2<double> { _xaxis.domain.x, xaxis_upper->value() } );
+    } );
+    QObject::connect( yaxis_lower, &Override<double>::value_changed, this, [=]
+    {
+        this->update_yaxis_domain( vec2<double> { yaxis_lower->value(), _yaxis.domain.y } );
+    } );
+    QObject::connect( yaxis_upper, &Override<double>::value_changed, this, [=]
+    {
+        this->update_yaxis_domain( vec2<double> { _yaxis.domain.x, yaxis_upper->value() } );
+    } );
+
+    auto menu_axes = context_menu.addMenu( "Axis Settings" );
+    menu_axes->addAction( xaxis_widget_action );
+    menu_axes->addAction( yaxis_widget_action );
 }
 
 int PlottingWidget::compute_xaxis_height() const noexcept

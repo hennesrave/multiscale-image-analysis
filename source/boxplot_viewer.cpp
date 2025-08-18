@@ -278,8 +278,8 @@ void BoxplotViewer::mousePressEvent( QMouseEvent* event )
         }
 
         context_menu.addAction( "Feature Manager", [this] { FeatureManager::execute( _database ); } );
-        context_menu.addAction( "Reset View", [this] { this->reset_view(); } );
         context_menu.addAction( "Export", [this] { this->export_boxplots(); } );
+        this->populate_context_menu( context_menu );
 
         context_menu.exec( event->globalPosition().toPoint() );
     }
