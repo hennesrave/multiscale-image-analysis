@@ -364,36 +364,43 @@ void PlottingWidget::reset_view()
 }
 void PlottingWidget::populate_context_menu( QMenu& context_menu )
 {
-    auto xaxis_label = new QLabel { "X-Axis:" };
-    auto yaxis_label = new QLabel { "Y-Axis:" };
+    auto xaxis_label = new QLabel { "X-Axis: " };
+    auto yaxis_label = new QLabel { "Y-Axis: " };
 
-    auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
+    auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _xaxis.domain.x == _xaxis.bounds.x ? std::nullopt : std::optional<double> { _xaxis.domain.x } };
     auto xaxis_upper = new Override<double> { _xaxis.bounds.y, _xaxis.domain.y == _xaxis.bounds.y ? std::nullopt : std::optional<double> { _xaxis.domain.y } };
 
     auto yaxis_lower = new Override<double> { _yaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
     auto yaxis_upper = new Override<double> { _yaxis.bounds.y, _yaxis.domain.y == _yaxis.bounds.y ? std::nullopt : std::optional<double> { _yaxis.domain.y } };
 
-    auto xaxis_domain_input = new RangeInput { *xaxis_lower, *xaxis_upper };
-    xaxis_lower->setParent( xaxis_domain_input );
-    xaxis_upper->setParent( xaxis_domain_input );
+    auto xaxis_lower_input = new NumberInput { *xaxis_lower, [=] ( double value ) { return value >= _xaxis.bounds.x && value < xaxis_upper->value(); } };
+    auto xaxis_upper_input = new NumberInput { *xaxis_upper, [=] ( double value ) { return value > xaxis_lower->value() && value <= _xaxis.bounds.y; } };
 
-    auto yaxis_domain_input = new RangeInput { *yaxis_lower, *yaxis_upper };
-    yaxis_lower->setParent( yaxis_domain_input );
-    yaxis_upper->setParent( yaxis_domain_input );
+    auto yaxis_lower_input = new NumberInput { *yaxis_lower, [=] ( double value ) { return value >= _yaxis.bounds.x && value < yaxis_upper->value(); } };
+    auto yaxis_upper_input = new NumberInput { *yaxis_upper, [=] ( double value ) { return value > yaxis_lower->value() && value <= _yaxis.bounds.y; } };
+
+    xaxis_lower->setParent( xaxis_lower_input );
+    xaxis_upper->setParent( xaxis_upper_input );
+    yaxis_lower->setParent( yaxis_lower_input );
+    yaxis_upper->setParent( yaxis_upper_input );
 
     auto xaxis_container_widget = new QWidget { &context_menu };
     auto xaxis_container_layout = new QHBoxLayout { xaxis_container_widget };
     xaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
-    xaxis_container_layout->setSpacing( 5 );
+    xaxis_container_layout->setSpacing( 3 );
     xaxis_container_layout->addWidget( xaxis_label );
-    xaxis_container_layout->addWidget( xaxis_domain_input );
+    xaxis_container_layout->addWidget( xaxis_lower_input );
+    xaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
+    xaxis_container_layout->addWidget( xaxis_upper_input );
 
     auto yaxis_container_widget = new QWidget { &context_menu };
     auto yaxis_container_layout = new QHBoxLayout { yaxis_container_widget };
     yaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
-    yaxis_container_layout->setSpacing( 5 );
+    yaxis_container_layout->setSpacing( 3 );
     yaxis_container_layout->addWidget( yaxis_label );
-    yaxis_container_layout->addWidget( yaxis_domain_input );
+    yaxis_container_layout->addWidget( yaxis_lower_input );
+    yaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
+    yaxis_container_layout->addWidget( yaxis_upper_input );
 
     auto xaxis_widget_action = new QWidgetAction { &context_menu };
     xaxis_widget_action->setDefaultWidget( xaxis_container_widget );
