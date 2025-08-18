@@ -1,0 +1,12 @@
+.vs
+build/*
+build/python/*
+datasets
+external/*
+intermediate
+
+*.qtvscr
+
+!.gitkeep
+!build/python
+!build/python/requirements.txt

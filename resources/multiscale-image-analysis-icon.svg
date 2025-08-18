@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!-- Created with Inkscape (http://www.inkscape.org/) -->
+
+<svg
+   width="1000mm"
+   height="1000mm"
+   viewBox="0 0 1000 1000"
+   version="1.1"
+   id="svg1"
+   inkscape:version="1.4 (86a8ad7, 2024-10-11)"
+   sodipodi:docname="multiscale-image-analysis-icon.svg"
+   inkscape:export-filename="multiscale-image-analysis-icon.png"
+   inkscape:export-xdpi="6.5023999"
+   inkscape:export-ydpi="6.5023999"
+   xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
+   xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
+   xmlns="http://www.w3.org/2000/svg"
+   xmlns:svg="http://www.w3.org/2000/svg">
+  <sodipodi:namedview
+     id="namedview1"
+     pagecolor="#ffffff"
+     bordercolor="#000000"
+     borderopacity="0.25"
+     inkscape:showpageshadow="2"
+     inkscape:pageopacity="0.0"
+     inkscape:pagecheckerboard="false"
+     inkscape:deskcolor="#d1d1d1"
+     inkscape:document-units="mm"
+     inkscape:zoom="0.18378155"
+     inkscape:cx="2228.1889"
+     inkscape:cy="1928.9205"
+     inkscape:window-width="1920"
+     inkscape:window-height="1009"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
+     inkscape:window-maximized="1"
+     inkscape:current-layer="layer1" />
+  <defs
+     id="defs1" />
+  <g
+     inkscape:label="layer"
+     inkscape:groupmode="layer"
+     id="layer1">
+    <rect
+       style="fill:#eb4034;fill-opacity:0.5;stroke:#eb4034;stroke-width:10;stroke-linecap:square;stroke-dasharray:none;stroke-opacity:1"
+       id="rect1"
+       width="690"
+       height="690"
+       x="5"
+       y="5"
+       ry="49.285713"
+       rx="49.285713"
+       inkscape:label="red" />
+    <rect
+       style="fill:#32a852;fill-opacity:0.501961;stroke:#32a852;stroke-width:10;stroke-dasharray:none;stroke-opacity:1"
+       id="rect1-8"
+       width="590"
+       height="590"
+       x="405"
+       y="205"
+       ry="42.142853"
+       rx="42.142853"
+       inkscape:label="green" />
+    <rect
+       style="mix-blend-mode:normal;fill:#4287f5;fill-opacity:0.501961;stroke:#4287f5;stroke-width:10;stroke-dasharray:none;stroke-opacity:1"
+       id="rect1-8-5"
+       width="490"
+       height="490"
+       x="105"
+       y="505"
+       ry="34.999996"
+       rx="34.999996"
+       inkscape:label="blue" />
+  </g>
+</svg>
