@@ -670,6 +670,9 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
             return;
         }
 
+        _point_indices.clear();
+        _point_positions.clear();
+
         while( stream )
         {
             std::string line;
