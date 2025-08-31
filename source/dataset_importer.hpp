@@ -8,6 +8,7 @@ class DatasetImporter
 {
 public:
     static QSharedPointer<Dataset> from_csv( const std::filesystem::path& filepath );
+    static QSharedPointer<Dataset> from_data_dims_freq( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_hdf5( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_mia( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_laser_info( const std::filesystem::path& filepath );
