@@ -41,6 +41,107 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     QMessageBox::critical( nullptr, "", "Unsupported file format" );
     return nullptr;
 }
+QSharedPointer<Dataset> DatasetImporter::from_data_dims_freq( const std::filesystem::path& input_filepath )
+{
+    enum class ValueType : uint32_t
+    {
+        eInvalid,
+        eInt8,
+        eInt16,
+        eInt32,
+        eInt64,
+
+        eUint8,
+        eUint16,
+        eUint32,
+        eUint64,
+
+        eFloat,
+        eDouble
+    };
+
+    auto filepath = input_filepath;
+    filepath.replace_extension( "dims" );
+
+    auto dimensions = vec3<uint32_t> {};
+    auto value_type = ValueType::eInvalid;
+
+    std::ifstream stream { filepath, std::ios::in | std::ios::binary };
+    stream.read( reinterpret_cast<char*>( &dimensions ), sizeof( vec3<uint32_t> ) );
+    stream.read( reinterpret_cast<char*>( &value_type ), sizeof( ValueType ) );
+
+    filepath.replace_extension( "freq" );
+
+    stream = std::ifstream { filepath, std::ios::in | std::ios::binary | std::ios::ate };
+    auto channels = Array<double>::allocate( dimensions.z );
+
+    const auto channels_element_size = stream.tellg() / dimensions.z;
+    stream.seekg( 0 );
+
+    if( channels_element_size == sizeof( double ) )
+    {
+        stream.read( reinterpret_cast<char*>( channels.data() ), channels.size() * sizeof( double ) );
+    }
+    else if( channels_element_size == sizeof( float ) )
+    {
+        std::vector<float> channels_float( dimensions.z );
+        stream.read( reinterpret_cast<char*>( channels_float.data() ), channels.size() * sizeof( float ) );
+        for( uint32_t i = 0; i < dimensions.z; ++i )
+            channels[i] = static_cast<double>( channels_float[i] );
+    }
+
+    filepath.replace_extension( "data" );
+    if( value_type == ValueType::eInvalid )
+    {
+        stream = std::ifstream { filepath, std::ios::in | std::ios::binary | std::ios::ate };
+        const auto values_element_size = stream.tellg() / dimensions.cast<uint64_t>().product();
+        value_type = values_element_size == 4 ? ValueType::eFloat : ValueType::eDouble;
+    }
+    stream = std::ifstream { filepath, std::ios::in | std::ios::binary };
+
+    Dataset* dataset = nullptr;
+    const auto import_dataset = [&] ( auto&& intensities )
+    {
+        stream.read( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
+
+        // transpose spatial dimensions
+        auto intensities_transposed = Matrix<typename std::decay_t<decltype( intensities )>::value_type>::allocate( { dimensions.x * dimensions.y, dimensions.z } );
+
+        for( size_t z = 0; z < dimensions.z; ++z )
+        {
+            for( size_t y = 0; y < dimensions.y; ++y )
+            {
+                for( size_t x = 0; x < dimensions.x; ++x )
+                {
+                    intensities_transposed.value( { x + y * dimensions.x, z } ) = intensities.value( { y + x * dimensions.y, z } );
+                }
+            }
+        }
+
+        dataset = new TensorDataset { std::move( intensities_transposed ), std::move( channels ) };
+        dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
+    };
+
+    switch( value_type )
+    {
+    case ValueType::eInt8: import_dataset( Matrix<int8_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eInt16: import_dataset( Matrix<int16_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eInt32: import_dataset( Matrix<int32_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eUint8: import_dataset( Matrix<uint8_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eUint16: import_dataset( Matrix<uint16_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eUint32: import_dataset( Matrix<uint32_t>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eFloat: import_dataset( Matrix<float>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    case ValueType::eDouble: import_dataset( Matrix<double>::allocate( { dimensions.x * dimensions.y, dimensions.z } ) ); break;
+    default:
+    {
+        Console::error( "Invalid value type" );
+        QMessageBox::critical( nullptr, "", "Invalid value type", QMessageBox::Ok );
+        return nullptr;
+    }
+    }
+
+    return QSharedPointer<Dataset> { dataset };
+}
 QSharedPointer<Dataset> DatasetImporter::from_hdf5( const std::filesystem::path& filepath )
 {
     auto interpreter = py::interpreter {};
@@ -907,6 +1008,10 @@ QSharedPointer<Dataset> DatasetImporter::execute_dialog()
     else if( extension == ".csv" || extension == ".txt" )
     {
         return DatasetImporter::from_csv( filepath );
+    }
+    else if( extension == ".data" || extension == ".dims" || extension == ".freq" )
+    {
+        return DatasetImporter::from_data_dims_freq( filepath );
     }
     else if( extension == ".h5" )
     {

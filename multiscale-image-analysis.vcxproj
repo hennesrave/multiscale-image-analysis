@@ -124,6 +124,7 @@
     <ClCompile Include="source\number_input.cpp" />
     <ClCompile Include="source\plotting_widget.cpp" />
     <ClCompile Include="source\python.cpp" />
+    <ClCompile Include="source\segmentation_creator.cpp" />
     <ClCompile Include="source\segmentation_manager.cpp" />
     <ClCompile Include="source\segment_selector.cpp" />
     <ClCompile Include="source\segmentation.cpp" />
@@ -163,6 +164,7 @@
     <QtMoc Include="source\spectrum_viewer.hpp" />
     <QtMoc Include="source\segmentation_manager.hpp" />
     <QtMoc Include="source\string_input.hpp" />
+    <QtMoc Include="source\segmentation_creator.hpp" />
     <ClInclude Include="source\tensor.hpp" />
     <QtMoc Include="source\utility.hpp" />
   </ItemGroup>

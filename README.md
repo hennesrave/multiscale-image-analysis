@@ -3,6 +3,8 @@ MIA (Multiscale Image Analysis) is a visualization software for spectral imaging
 
 > Hennes Rave, **MIA: Multiscale Image Analysis**, 2025. https://github.com/hennesrave/multiscale-image-analysis
 
+![Application Teaser Image](resources/application-teaser.png)
+
 ## Build instructions
 - Install [Qt](https://www.qt.io/) version 6.9.1 and [Qt Visual Studio Tools](https://marketplace.visualstudio.com/items?itemName=TheQtCompany.QtVisualStudioTools2022) 
 - Install [Python 3.13.5](https://www.python.org/downloads/release/python-3135/) and copy `Python313/include/` and `Python313/libs/` to `external/Python313/`

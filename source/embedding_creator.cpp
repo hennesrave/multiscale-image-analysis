@@ -289,6 +289,7 @@ try:
             random_state    = pca_random_state
         )
         embedding = pca.fit_transform( filtered_dataset ).astype( np.float32 )
+        print( f"[Embedding] Explained variance: {pca.explained_variance_ratio_} (total: {np.sum(pca.explained_variance_ratio_):.3f}) " )
 
     elif algorithm == "UMAP":
         import umap
