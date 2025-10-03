@@ -1,5 +1,6 @@
 #include "database.hpp"
 
+#include "segmentation_creator.hpp"
 #include "segmentation_manager.hpp"
 
 #include <qfiledialog.h>
@@ -118,6 +119,11 @@ void Database::populate_segmentation_menu( QMenu& context_menu )
 
     auto segmentation_menu = context_menu.addMenu( "Segmentation" );
     segmentation_menu->addAction( "Manage", [this] { SegmentationManager::execute( *this ); } );
+    segmentation_menu->addAction( "Create", [this]
+    {
+        const auto segmentation = SegmentationCreator::execute( *this );
+        _segmentation->deserialize( segmentation->serialize() );
+    } );
     segmentation_menu->addAction( "Import", [this]
     {
         const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "JSON Files (*.json)", nullptr );
