@@ -103,8 +103,23 @@ QSharedPointer<Dataset> DatasetImporter::from_data_dims_freq( const std::filesys
     const auto import_dataset = [&] ( auto&& intensities )
     {
         stream.read( reinterpret_cast<char*>( intensities.data() ), intensities.bytes() );
-        dataset = new TensorDataset { std::move( intensities ), std::move( channels ) };
-        dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.y, dimensions.x ) );
+
+        // transpose spatial dimensions
+        auto intensities_transposed = Matrix<typename std::decay_t<decltype( intensities )>::value_type>::allocate( { dimensions.x * dimensions.y, dimensions.z } );
+
+        for( size_t z = 0; z < dimensions.z; ++z )
+        {
+            for( size_t y = 0; y < dimensions.y; ++y )
+            {
+                for( size_t x = 0; x < dimensions.x; ++x )
+                {
+                    intensities_transposed.value( { x + y * dimensions.x, z } ) = intensities.value( { y + x * dimensions.y, z } );
+                }
+            }
+        }
+
+        dataset = new TensorDataset { std::move( intensities_transposed ), std::move( channels ) };
+        dataset->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y ) );
     };
 
     switch( value_type )
