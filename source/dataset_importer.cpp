@@ -293,6 +293,9 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
             return nullptr;
         }
     }
+
+    auto ignore_invalid_vertical_spacing = false;
+
     for( size_t i = 1; i < laser_lines.size(); ++i )
     {
         const auto& previous = laser_lines[i - 1];
@@ -316,10 +319,17 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
             return nullptr;
         }
 
-        if( std::abs( current.start_y - ( previous.start_y + current.spot_size ) ) > 1.0e-6 )
+        if( !ignore_invalid_vertical_spacing && std::abs( current.start_y - ( previous.start_y + current.spot_size ) ) > 1.0e-6 )
         {
-            QMessageBox::critical( nullptr, "", "Vertical spacing must be equal to spot size" );
-            return nullptr;
+            const auto result = QMessageBox::critical( nullptr, "", "Vertical spacing must be equal to spot size", QMessageBox::Abort | QMessageBox::Ignore, QMessageBox::Abort );
+            if( result == QMessageBox::Ignore )
+            {
+                ignore_invalid_vertical_spacing = true;
+            }
+            else
+            {
+                return nullptr;
+            }
         }
 
         if( current.number_of_shots != previous.number_of_shots )
