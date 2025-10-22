@@ -9,11 +9,11 @@ namespace config
     {
         uint8_t major = 1;
         uint8_t minor = 0;
-        uint8_t patch = 2;
+        uint8_t patch = 3;
     };
 
     constexpr inline ApplicationVersion application_version;
-    constexpr inline auto application_version_string = "1.0.2";
+    constexpr inline auto application_version_string = "1.0.3";
     constexpr inline auto application_identifier = "multiscale-image-analysis";
     constexpr inline auto application_display_name = "MIA: Multiscale Image Analysis";
 
