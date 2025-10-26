@@ -1,6 +1,7 @@
 #include "spectrum_viewer.hpp"
 
 #include "dataset.hpp"
+#include "dataset_exporter.hpp"
 #include "feature.hpp"
 #include "segmentation.hpp"
 #include "utility.hpp"
@@ -509,7 +510,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             }
         } );
 
-        dataset_menu->addAction( "Export", [this] { this->export_dataset(); } );
+        dataset_menu->addAction( "Export", [this] { DatasetExporter::execute_dialog( _database, _database.dataset() ); } );
 
         menu.exec( event->globalPosition().toPoint() );
 
@@ -837,21 +838,5 @@ void SpectrumViewer::import_spectra()
             this->update();
         } );
         dialog.exec();
-    }
-}
-void SpectrumViewer::export_dataset() const
-{
-    const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia" );
-    if( !filepath.isEmpty() )
-    {
-        auto stream = MIAFileStream { filepath.toStdWString(), std::ios::out };
-        if( !stream )
-        {
-            QMessageBox::critical( nullptr, "", "Failed to open file" );
-            return;
-        }
-
-        const auto dataset = _database.dataset();
-        stream.write( dataset );
     }
 }

@@ -132,6 +132,9 @@
     <ClCompile Include="source\segmentation_creator.cpp">
       <Filter>Source Files\application\widgets</Filter>
     </ClCompile>
+    <ClCompile Include="source\dataset_exporter.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -227,6 +230,9 @@
       <Filter>Header Files\application\widgets</Filter>
     </QtMoc>
     <QtMoc Include="source\segmentation_creator.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\dataset_exporter.hpp">
       <Filter>Header Files\application\widgets</Filter>
     </QtMoc>
   </ItemGroup>

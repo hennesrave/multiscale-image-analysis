@@ -58,7 +58,6 @@ private:
     void baseline_correction() const;
     void export_spectra() const;
     void import_spectra();
-    void export_dataset() const;
 
     Database& _database;
 
