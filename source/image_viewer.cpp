@@ -3,11 +3,9 @@
 #include "colormap.hpp"
 #include "database.hpp"
 #include "dataset.hpp"
-#include "colormap_viewer.hpp"
 #include "feature.hpp"
-#include "segment_selector.hpp"
+#include "python.hpp"
 #include "segmentation.hpp"
-#include "segmentation_manager.hpp"
 
 #include <qactiongroup.h>
 #include <qapplication.h>
@@ -15,17 +13,11 @@
 #include <qclipboard.h>
 #include <qevent.h>
 #include <qfiledialog.h>
-#include <qlabel.h>
 #include <qlineedit.h>
-#include <qlayout.h>
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qmimedata.h>
 #include <qpainter.h>
-#include <qslider.h>
-#include <qstackedlayout.h>
-#include <qtoolbutton.h>
-#include <qwidgetaction.h>
 
 // ----- ImageViewer ----- //
 
@@ -89,6 +81,20 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     painter.setOpacity( _segmentation_opacity );
     painter.drawImage( _image_rectangle, image );
     painter.setOpacity( 1.0 );
+
+    // Render overlay image
+    if( _overlay_image.size() )
+    {
+        const auto image = QImage {
+            reinterpret_cast<const uchar*>( _overlay_image.data() ),
+            static_cast<int>( _overlay_image.dimensions()[0] ),
+            static_cast<int>( _overlay_image.dimensions()[1] ),
+            QImage::Format_RGB888
+        };
+        painter.setOpacity( _segmentation_opacity );
+        painter.drawImage( _image_rectangle, image );
+        painter.setOpacity( 1.0 );
+    }
 
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
@@ -281,6 +287,14 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
 
                 context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
 
+                auto overlay_menu = context_menu.addMenu( "Overlay" );
+                overlay_menu->addAction( "Import", [this] { this->import_overlay(); } );
+                overlay_menu->addAction( "Remove", [this]
+                {
+                    _overlay_image.clear();
+                    this->update();
+                } );
+
                 auto image_opacity_menu = context_menu.addMenu( "Image Opacity" );
                 auto image_opacity_action_group = new QActionGroup { image_opacity_menu };
                 image_opacity_action_group->setExclusive( true );
@@ -438,6 +452,169 @@ void ImageViewer::reset_image_rectangle()
     _image_rectangle = QRectF { 0.0, 0.0, scaling * dimensions.x, scaling * dimensions.y };
     _image_rectangle.moveCenter( this->rect().center().toPointF() );
     this->update();
+}
+void ImageViewer::import_overlay()
+{
+    const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Overlay...", "", "*.png;*.jpg;*.tif", nullptr );
+    if( !filepath.isEmpty() )
+    {
+        if( const auto colormap = _colormap.lock() )
+        {
+            auto interpreter = py::interpreter {};
+
+            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto dataset = _database.dataset();
+
+            auto dataset_memoryview = std::optional<py::memoryview> {};
+            dataset->visit( [&dataset_memoryview, dimensions] ( const auto& dataset )
+            {
+                using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
+                dataset_memoryview = py::memoryview::from_buffer(
+                    dataset.intensities().data(),
+                    { dimensions.y, dimensions.x, dataset.channel_count() },
+                    { dimensions.x * dataset.channel_count() * sizeof( value_type ), dataset.channel_count() * sizeof( value_type ), sizeof( value_type ) }
+                );
+            } );
+            if( !dataset_memoryview.has_value() )
+            {
+                QMessageBox::critical( nullptr, "Import Overlay...", "Cannot import overlay for this dataset" );
+                return;
+            }
+
+            const auto colors_memoryview = py::memoryview::from_buffer(
+                reinterpret_cast<const float*>( colormap->colors().data() ),
+                { dimensions.y, dimensions.x, 4u },
+                { dimensions.x * 4 * sizeof( float ), 4 * sizeof( float ), sizeof( float ) }
+            );
+
+            using namespace py::literals;
+            auto locals = py::dict {
+                "filepath"_a = filepath.toStdWString(),
+                "dataset"_a = dataset_memoryview,
+                "colors"_a = colors_memoryview
+            };
+
+            try
+            {
+                py::exec( R"(
+try:
+    import cv2
+    import numpy as np
+
+    # --- 1. Preprocessing ---
+    print( "Computing reference image..." )
+    dataset = np.asarray( dataset, copy=False )
+    dataset = np.sum( dataset, axis=2 )
+    dataset = dataset - np.min( dataset )
+    dataset = dataset / np.max( dataset )
+
+    # img_ref = np.asarray( colors, copy=True )
+    # gray_ref = cv2.cvtColor( img_ref, cv2.COLOR_RGBA2GRAY )
+    # gray_ref = gray_ref - np.min( gray_ref )
+    # gray_ref = gray_ref / np.max( gray_ref )
+    gray_ref = dataset
+    gray_ref = ( gray_ref * 255 ).astype( np.uint8 )
+    print( f"Overlay: {gray_ref.shape}, {gray_ref.dtype}, {np.min( gray_ref )} - {np.max( gray_ref )}" )
+
+    img_ovl = cv2.imread( filepath, cv2.IMREAD_UNCHANGED )
+    gray_ovl = cv2.cvtColor( img_ovl, cv2.COLOR_BGR2GRAY ).astype( np.float32 )
+    gray_ovl = gray_ovl - np.min( gray_ovl )
+    gray_ovl = gray_ovl / np.max( gray_ovl )
+    gray_ovl = ( gray_ovl * 255 ).astype( np.uint8 )
+    print( f"Overlay: {gray_ovl.shape}, {gray_ovl.dtype}, {np.min( gray_ovl )} - {np.max( gray_ovl )}" )
+
+    hist_ref = cv2.calcHist( [gray_ref], [0], None, [256], [0,256] )
+    hist_ovl = cv2.calcHist( [gray_ovl], [0], None, [256], [0,256] )
+    
+    score_original = cv2.compareHist( hist_ref, hist_ovl, cv2.HISTCMP_CORREL )
+    score_inverted = cv2.compareHist( hist_ref, hist_ovl[::-1], cv2.HISTCMP_CORREL )
+    print( f"Histogram matching scores: original={score_original}, inverted={score_inverted}" )
+
+    if score_inverted > score_original:
+        print( "Inverting overlay image for better matching..." )
+        gray_ovl = cv2.bitwise_not( gray_ovl )
+
+    cv2.imshow( "Reference Image", gray_ref )
+    cv2.imshow( "Overlay Image", gray_ovl )
+    cv2.waitKey( 0 )
+    cv2.destroyAllWindows()
+
+    # --- 2. SIFT Feature Detection ---
+    print( "Detecting SIFT features..." )
+    sift = cv2.SIFT_create()
+    
+    # Detect keypoints and compute descriptors
+    kp_ref, des_ref = sift.detectAndCompute( gray_ref, None )
+    kp_ovl, des_ovl = sift.detectAndCompute( gray_ovl, None )
+    
+    if des_ref is None or des_ovl is None:
+        raise ValueError( "Could not find features in one of the images." )
+
+    # --- 3. Feature Matching (FLANN) ---
+    print( "Matching features..." )
+    # FLANN parameters for SIFT
+    FLANN_INDEX_KDTREE = 1
+    index_params = dict( algorithm=FLANN_INDEX_KDTREE, trees=5 )
+    search_params = dict( checks=50 )
+    
+    flann = cv2.FlannBasedMatcher( index_params, search_params )
+    
+    # k=2 for Ratio Test
+    matches = flann.knnMatch( des_ovl, des_ref, k=2 )
+
+    # --- 4. Lowe's Ratio Test ---
+    # Keep only matches where the best match is significantly better than the second best
+    good_matches = []
+    ratio_thresh = 0.7  # Typically 0.7 or 0.75
+    for m, n in matches:
+        if m.distance < ratio_thresh * n.distance:
+            good_matches.append( m )
+            
+    print( f"Good matches found: {len( good_matches )}" )
+
+    if len( good_matches ) < 4:
+        raise ValueError("Not enough good matches to compute Homography.")
+
+    # --- 5. Compute Homography (RANSAC) ---
+    # Extract coordinates from the keypoints
+    src_pts = np.float32( [kp_ovl[m.queryIdx].pt for m in good_matches] ).reshape( -1, 1, 2 )
+    dst_pts = np.float32( [kp_ref[m.trainIdx].pt for m in good_matches] ).reshape( -1, 1, 2 )
+
+    # Calculate Homography
+    M, mask = cv2.findHomography( src_pts, dst_pts, cv2.RANSAC, 5.0 )
+    # M, mask = cv2.estimateAffine2D( src_pts, dst_pts, method=cv2.RANSAC )
+
+    if M is None:
+        raise ValueError( "Homography calculation failed." )
+
+    # --- 6. Apply Warping ---
+    aligned = cv2.warpPerspective( img_ovl, M, ( gray_ref.shape[1], gray_ref.shape[0] ) )
+    # aligned = cv2.warpAffine( img_ovl, M, ( gray_ref.shape[1], gray_ref.shape[0] ) )
+    print( f"Aligned: {aligned.shape}, {aligned.dtype}, {np.min( aligned )} - {np.max( aligned )}" )
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+            }
+            catch( py::error_already_set& error )
+            {
+                locals["error"] = error.what();
+            }
+
+            if( locals.contains( "error" ) )
+            {
+                const auto error = locals["error"].cast<std::string>();
+                Console::error( std::format( "Python error during overlay import: {}", error ) );
+                QMessageBox::critical( nullptr, "Import Overlay...", "Failed to import overlay", QMessageBox::Ok );
+            }
+            else
+            {
+                const auto aligned = locals["aligned"].cast<py::array>();
+                _overlay_image = Tensor::with_rank<3>::with_type<uint8_t> { { dimensions.x, dimensions.y, 3 }, 0 };
+                std::memcpy( _overlay_image.data(), aligned.data(), _overlay_image.bytes() );
+                this->update();
+            }
+        }
+    }
 }
 void ImageViewer::create_screenshot( uint32_t scaling ) const
 {

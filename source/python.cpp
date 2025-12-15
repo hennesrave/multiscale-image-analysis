@@ -16,6 +16,7 @@ namespace pybind11
         PyConfig_SetWideStringList( &configuration, &configuration.module_search_paths, 0, nullptr );
         for( const auto& path : interpreter::module_search_paths )
             PyWideStringList_Append( &configuration.module_search_paths, path.c_str() );
+
         configuration.module_search_paths_set = 1;
 
         return &configuration;

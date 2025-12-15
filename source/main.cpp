@@ -46,7 +46,8 @@ int main( int argc, char** argv )
     py::interpreter::module_search_paths = {
         py::interpreter::python_home,
         py::interpreter::python_home + L"\\python313.zip",
-        py::interpreter::python_home + L"\\Lib\\site-packages"
+        py::interpreter::python_home + L"\\Lib\\site-packages",
+        py::interpreter::python_home + L"\\Lib\\site-packages\\cv2"
     };
     py::interpreter::initialize();
 

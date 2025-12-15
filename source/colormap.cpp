@@ -523,7 +523,7 @@ void Colormap1D::update_colormap_template( std::unique_ptr<ColormapTemplate> col
 
         if( _colormap_template = std::move( colormap_template ) )
         {
-            QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, this, &Colormap1D::colors_changed );
+            QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, &_colors, &ComputedObject::invalidate );
         }
         emit template_changed( _colormap_template );
     }

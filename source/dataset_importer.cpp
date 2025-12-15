@@ -556,9 +556,9 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
 
             for( auto spectrum_iterator = values.begin(); spectrum_iterator != values.end(); spectrum_iterator += spectrum_size )
             {
-                const auto header = reinterpret_cast<const Header*>( spectrum_iterator._Ptr );
+                const auto header = reinterpret_cast<const Header*>( &( *spectrum_iterator ) );
                 const auto elapsed_time = static_cast<uint64_t>( header->acquisition_number ) * acquisition_period;
-                const auto input_spectrum = reinterpret_cast<const Result*>( spectrum_iterator._Ptr + sizeof( Header ) );
+                const auto input_spectrum = reinterpret_cast<const Result*>( &( *spectrum_iterator ) + sizeof( Header ) );
 
                 if( elapsed_time < laserspots[current_laserspot_index].elapsed_time )
                 {
