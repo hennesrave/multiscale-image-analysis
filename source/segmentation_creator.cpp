@@ -173,7 +173,7 @@ try:
     if len( element_indices ) == dataset.shape[0] and len( channel_indices ) == dataset.shape[1]:
         filtered_dataset = dataset
     else:
-        filtered_dataset = dataset[np.ix_(element_indices, channel_indices)].copy()
+        filtered_dataset = dataset[np.ix_(element_indices, channel_indices)]
     print( f"[Segmentation] Filtered dataset:  ({dataset.shape}, {dataset.dtype}) " )
                         
     if np.any( filtered_dataset.shape == 0 ):
