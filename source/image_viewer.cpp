@@ -287,13 +287,13 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
 
                 context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
 
-                auto overlay_menu = context_menu.addMenu( "Overlay" );
-                overlay_menu->addAction( "Import", [this] { this->import_overlay(); } );
-                overlay_menu->addAction( "Remove", [this]
-                {
-                    _overlay_image.clear();
-                    this->update();
-                } );
+                //auto overlay_menu = context_menu.addMenu( "Overlay" );
+                //overlay_menu->addAction( "Import", [this] { this->import_overlay(); } );
+                //overlay_menu->addAction( "Remove", [this]
+                //{
+                //    _overlay_image.clear();
+                //    this->update();
+                //} );
 
                 auto image_opacity_menu = context_menu.addMenu( "Image Opacity" );
                 auto image_opacity_action_group = new QActionGroup { image_opacity_menu };
@@ -533,11 +533,6 @@ try:
     if score_inverted > score_original:
         print( "Inverting overlay image for better matching..." )
         gray_ovl = cv2.bitwise_not( gray_ovl )
-
-    cv2.imshow( "Reference Image", gray_ref )
-    cv2.imshow( "Overlay Image", gray_ovl )
-    cv2.waitKey( 0 )
-    cv2.destroyAllWindows()
 
     # --- 2. SIFT Feature Detection ---
     print( "Detecting SIFT features..." )

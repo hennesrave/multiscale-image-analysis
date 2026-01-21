@@ -167,9 +167,13 @@ try:
     segmentation    = np.asarray( segmentation, copy=False )
     print( f"[Segmentation] Dataset:           ({dataset.shape}, {dataset.dtype}), Segmentation: ({segmentation.shape}, {segmentation.dtype}) " )
 
-    element_indices     = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
-    channel_indices     = np.array( channel_indices, dtype=np.int64 )
-    filtered_dataset    = dataset[np.ix_(element_indices, channel_indices)].copy()
+    element_indices = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
+    channel_indices = np.array( channel_indices, dtype=np.int64 )
+
+    if len( element_indices ) == dataset.shape[0] and len( channel_indices ) == dataset.shape[1]:
+        filtered_dataset = dataset
+    else:
+        filtered_dataset = dataset[np.ix_(element_indices, channel_indices)].copy()
     print( f"[Segmentation] Filtered dataset:  ({dataset.shape}, {dataset.dtype}) " )
                         
     if np.any( filtered_dataset.shape == 0 ):
