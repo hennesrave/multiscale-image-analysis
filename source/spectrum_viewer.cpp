@@ -511,6 +511,32 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             }
         } );
 
+        auto derivative_menu = dataset_menu->addMenu( "Derivative" );
+        derivative_menu->addAction( "1st Derivative", [this]
+        {
+            const auto answer = QMessageBox::question( nullptr, "Derivative", "This will compute the 1st derivative on whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            if( answer == QMessageBox::Yes )
+            {
+                _database.dataset()->apply_derivative( 1 );
+            }
+        } );
+        derivative_menu->addAction( "2nd Derivative", [this]
+        {
+            const auto answer = QMessageBox::question( nullptr, "Derivative", "This will compute the 2nd derivative on whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            if( answer == QMessageBox::Yes )
+            {
+                _database.dataset()->apply_derivative( 2 );
+            }
+        } );
+        derivative_menu->addAction( "3rd Derivative", [this]
+        {
+            const auto answer = QMessageBox::question( nullptr, "Derivative", "This will compute the 3rd derivative on whole dataset.\nDo you want to continue?", QMessageBox::Yes | QMessageBox::No );
+            if( answer == QMessageBox::Yes )
+            {
+                _database.dataset()->apply_derivative( 3 );
+            }
+        } );
+
         dataset_menu->addAction( "Export", [this] { DatasetExporter::execute_dialog( _database, _database.dataset() ); } );
 
         menu.exec( event->globalPosition().toPoint() );

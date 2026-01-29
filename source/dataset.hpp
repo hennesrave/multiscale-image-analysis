@@ -66,8 +66,10 @@ public:
     const SpatialMetadata* spatial_metadata() const noexcept;
 
     virtual Array<double> element_intensities( uint32_t element_index ) const = 0;
+
     virtual void apply_baseline_correction_minimum() = 0;
     virtual void apply_baseline_correction_linear() = 0;
+    virtual void apply_derivative( uint32_t degree ) = 0;
 
     const std::optional<Array<QString>>& override_channel_identifiers() const noexcept;
 
@@ -193,6 +195,41 @@ public:
                 element_intensities[channel_index] -= intensity_correction;
             }
         } );
+        emit intensities_changed();
+    }
+    void apply_derivative( uint32_t degree ) override
+    {
+        for( uint32_t index = 0; index < degree; ++index )
+        {
+            Console::info( "Computing derivative..." );
+            utility::iterate_parallel( this->element_count(), [this] ( uint32_t element_index )
+            {
+                auto element_intensities = _intensities.data() + element_index * this->channel_count();
+
+                auto previous_value = element_intensities[0];
+                const auto maximum_channel_index = this->channel_count() - 1;
+
+                for( uint32_t channel_index = 0; channel_index < this->channel_count(); ++channel_index )
+                {
+                    const auto previous_channel_index   = ( channel_index == 0 )? 0 : channel_index - 1;
+                    const auto next_channel_index       = ( channel_index == maximum_channel_index )? maximum_channel_index : channel_index + 1;
+
+                    const auto previous_channel     = _channel_positions[previous_channel_index];
+                    const auto next_channel         = _channel_positions[next_channel_index];
+
+                    const auto next_value           = element_intensities[next_channel_index];
+                    const auto current_value        = element_intensities[channel_index];
+
+                    const auto value_difference     = next_value - previous_value;
+                    const auto channel_difference   = next_channel - previous_channel;
+
+                    const auto derivative = ( channel_difference < 1e-8 )? 0.0 : ( value_difference / channel_difference );
+                    element_intensities[channel_index] = static_cast<value_type>( derivative );
+
+                    previous_value = current_value;
+                }
+            } );
+        }
         emit intensities_changed();
     }
 
