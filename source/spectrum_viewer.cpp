@@ -7,6 +7,7 @@
 #include "utility.hpp"
 
 #include <qactiongroup.h>
+#include <qcombobox.h>
 #include <qevent.h>
 #include <qfiledialog.h>
 #include <qformlayout.h>
@@ -16,7 +17,7 @@
 #include <qmessagebox.h>
 #include <qpainter.h>
 #include <qpushbutton.h>
-#include <qwidgetaction.h>
+#include <qtoolbutton.h>
 
 SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
 {
@@ -812,6 +813,13 @@ void SpectrumViewer::import_spectra()
         }
 
         auto button_import = new QPushButton { "Import" };
+        auto button_compute_similarity = new QPushButton { "Compute Similarity" };
+
+        auto controls_layout = new QHBoxLayout {};
+        controls_layout->setContentsMargins( 0, 0, 0, 0 );
+        controls_layout->setSpacing( 10 );
+        controls_layout->addWidget( button_import );
+        controls_layout->addWidget( button_compute_similarity );
 
         auto dialog = QDialog {};
         dialog.setWindowTitle( "Import Spectra..." );
@@ -822,7 +830,7 @@ void SpectrumViewer::import_spectra()
 
         layout->addWidget( listwidget );
         layout->addItem( new QSpacerItem { 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding } );
-        layout->addWidget( button_import );
+        layout->addLayout( controls_layout );
 
         QObject::connect( button_import, &QPushButton::clicked, this, [&]
         {
@@ -837,6 +845,145 @@ void SpectrumViewer::import_spectra()
             dialog.accept();
             this->update();
         } );
+
+        QObject::connect( button_compute_similarity, &QPushButton::clicked, this, [&]
+        {
+            auto selected_spectra = std::vector<ImportedSpectrum> {};
+            for( uint32_t spectrum_index = 0; spectrum_index < imported_spectra.size(); ++spectrum_index )
+            {
+                if( listwidget->item( spectrum_index )->isSelected() )
+                {
+                    selected_spectra.push_back( std::move( imported_spectra[spectrum_index] ) );
+                }
+            }
+
+            dialog.accept();
+            this->compute_similarity( selected_spectra );
+        } );
+
         dialog.exec();
     }
+}
+void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& reference_spectra ) const
+{
+    auto metric_combobox = new QComboBox {};
+    metric_combobox->addItem( "Euclidean" );
+
+    auto filepath_label = new QLabel {};
+    filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
+    filepath_label->setTextInteractionFlags( Qt::TextSelectableByMouse );
+    filepath_label->setStyleSheet( "QLabel { background: #fafafa; border-radius: 3px; }" );
+    filepath_label->setMaximumWidth( 300 );
+    filepath_label->setContentsMargins( 5, 3, 5, 3 );
+
+    auto filepath_button = new QToolButton {};
+    filepath_button->setIcon( QIcon { ":/edit.svg" } );
+    filepath_button->setCursor( Qt::ArrowCursor );
+
+    auto filepath_layout = new QHBoxLayout {};
+    filepath_layout->setContentsMargins( 0, 0, 0, 0 );
+    filepath_layout->setSpacing( 10 );
+    filepath_layout->addWidget( filepath_label, 1 );
+    filepath_layout->addWidget( filepath_button );
+
+    auto button_compute = new QPushButton { "Compute" };
+
+    auto dialog = QDialog {};
+    dialog.setWindowTitle( "Compute Similarity..." );
+    dialog.setMinimumSize( 400, 300 );
+
+    auto layout = new QFormLayout { &dialog };
+
+    layout->addRow( "Metric", metric_combobox );
+    layout->addRow( "Filepath", filepath_layout );
+    layout->addItem( new QSpacerItem { 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding } );
+    layout->addWidget( button_compute );
+
+    QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
+    {
+        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", "*.mia" );
+        filepath_label->setText( filepath );
+    } );
+
+    QObject::connect( button_compute, &QPushButton::clicked, this, [&]
+    {
+        if( filepath_label->text().isEmpty() )
+        {
+            QMessageBox::warning( nullptr, "Compute Similarity...", "Please select a valid filepath" );
+            return;
+        }
+
+        const auto dataset = _database.dataset();
+
+        const auto element_count = dataset->element_count();
+        const auto channel_count = dataset->channel_count();
+        const auto spectra_count = static_cast<uint32_t>( reference_spectra.size() );
+
+        auto similarities = Matrix<float>::allocate( { element_count, spectra_count } );
+        dataset->visit( [&] ( const auto& dataset )
+        {
+            const auto& intensities = dataset.intensities();
+
+            for( uint32_t spectrum_index = 0; spectrum_index < spectra_count; ++spectrum_index )
+            {
+                const auto& reference_spectrum = reference_spectra[spectrum_index];
+
+                Console::info( std::format(
+                    "Computing similarity for '{}' [{}/{}]...",
+                    reference_spectrum.identifier.toStdString(),
+                    spectrum_index + 1,
+                    spectra_count
+                ) );
+
+                utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                {
+                    auto euclidean_distance = 0.0;
+                    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+                    {
+                        const auto element_intensity = static_cast<double>( intensities.value( { element_index, channel_index } ) );
+                        const auto reference_intensity = reference_spectrum.values[channel_index];
+
+                        const auto difference = element_intensity - reference_intensity;
+                        euclidean_distance += difference * difference;
+                    }
+                    euclidean_distance = std::sqrt( euclidean_distance );
+
+                    const auto similarity = 1.0 / ( 1.0 + euclidean_distance );
+                    similarities.update_value( { element_index, spectrum_index }, similarity );
+                } );
+            }
+        } );
+
+        auto channel_positions = Array<double>::allocate( spectra_count );
+        auto channel_identifiers = Array<QString> { spectra_count, QString {} };
+        for( uint32_t channel_index = 0; channel_index < channel_positions.size(); ++channel_index )
+        {
+            channel_positions[channel_index] = static_cast<double>( channel_index + 1 );
+            channel_identifiers[channel_index] = reference_spectra[channel_index].identifier;
+        }
+
+        auto similarity_dataset_pointer = new TensorDataset<float> { std::move( similarities ), std::move( channel_positions ) };
+        similarity_dataset_pointer->update_channel_identifiers( std::move( channel_identifiers ) );
+
+        if( const auto spatial_metadata = dataset->spatial_metadata() )
+        {
+            similarity_dataset_pointer->update_spatial_metadata( std::make_unique<Dataset::SpatialMetadata>( *dataset->spatial_metadata() ) );
+        }
+
+        auto similarity_dataset = QSharedPointer<Dataset> { similarity_dataset_pointer };
+
+        auto stream = MIAFileStream { filepath_label->text().toStdString(), std::ios::out };
+        if( stream )
+        {
+            stream.write( similarity_dataset );
+        }
+        else
+        {
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
+        }
+
+        dialog.accept();
+    } );
+
+    dialog.exec();
 }

@@ -2,7 +2,9 @@
 
 #include "dataset.hpp"
 
+#include <ranges>
 #include <regex>
+#include <string_view>
 
 #include <qmessagebox.h>
 
@@ -49,9 +51,10 @@ template<> BinaryStream& BinaryStream::read( BinaryStream& stream, QSharedPointe
     auto attribute_spatial_metadata = false;
     auto attribute_channel_identifiers = false;
 
-    for( size_t match_index = 1; match_index < matches.size(); ++match_index )
+    auto attributes = matches[1].str() | std::views::split( '|' );
+    for( const auto& attribute_match : attributes )
     {
-        const auto attribute = matches[match_index].str();
+        const auto attribute = std::string { attribute_match.begin(), attribute_match.end() };
         if( attribute == "ChannelIdentifiers" ) attribute_channel_identifiers = true;
         else if( attribute == "SpatialMetadata" ) attribute_spatial_metadata = true;
         else
