@@ -673,7 +673,7 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem
         std::getline( filestream, linestring, '\n' );   // Direction of ablation
         const auto direction_of_ablation = linestring.substr( linestring.find_first_of( ',' ) + 1 );
 
-        if( direction_of_ablation != "0,Left to Right" )
+        if( direction_of_ablation.find( "Left to Right" ) == std::string::npos )
         {
             Console::error( "Unsupported direction of ablation: " + direction_of_ablation );
             QMessageBox::critical( nullptr, "", "Unsupported direction of ablation", QMessageBox::Ok );
