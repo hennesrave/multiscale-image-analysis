@@ -10,7 +10,9 @@ public:
     static QSharedPointer<Dataset> from_csv( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_data_dims_freq( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_hdf5( const std::filesystem::path& filepath );
+    static QSharedPointer<Dataset> from_matrix( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_mia( const std::filesystem::path& filepath );
+    static QSharedPointer<Dataset> from_la_icp_ms( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_laser_info( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_laser_lines( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_rpl( const std::filesystem::path& filepath );
