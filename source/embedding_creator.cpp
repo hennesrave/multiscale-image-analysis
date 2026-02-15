@@ -321,7 +321,7 @@ try:
     
     # === Adjust features weight based on the number of channels and features === #
     features_weight = 1.0
-    if feature_count > 0:
+    if channel_count > 0 and feature_count > 0:
         features_weight = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count / feature_count )
 
     if normalization != "None":
