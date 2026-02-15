@@ -320,10 +320,9 @@ try:
     print( f"[Embedding] Filtered dataset:  ({filtered_dataset.shape}, {filtered_dataset.dtype}) " )
     
     # === Adjust features weight based on the number of channels and features === #
-    if channel_count == 0:
-        features_weight = 1.0
-    elif feature_count > 0:
-        features_weights = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count / feature_count )
+    features_weight = 1.0
+    if feature_count > 0:
+        features_weight = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count / feature_count )
 
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset... " )
