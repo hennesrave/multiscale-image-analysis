@@ -30,6 +30,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
 {
     const auto dataset = _database.dataset();
     const auto segmentation = _database.segmentation();
+    const auto features = _database.features();
 
     this->setWindowTitle( "Create Embedding..." );
     this->setStyleSheet( "QPushButton { padding: 2px 5px 2px 5px; }" );
@@ -54,10 +55,20 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     channels_select_layout->addWidget( channels_deselect_all );
     channels_select_layout->addWidget( channels_select_from_features );
 
+    auto features_list = new QListWidget {};
+    features_list->setSelectionMode( QAbstractItemView::MultiSelection );
+    for( qsizetype feature_index = 0; feature_index < features->object_count(); ++feature_index )
+        features_list->addItem( features->object( feature_index )->identifier() );
+
     auto normalization = new QComboBox {};
     normalization->addItem( "Z-score" );
     normalization->addItem( "Min-Max" );
     normalization->addItem( "None" );
+
+    auto features_weight = new QDoubleSpinBox {};
+    features_weight->setRange( 0.0, 10.0 );
+    features_weight->setSingleStep( 0.1 );
+    features_weight->setValue( 1.0 );
 
     auto filepath_label = new QLabel {};
     filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
@@ -152,7 +163,9 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     layout->addRow( "Filter", segment_selector );
     layout->addRow( "Channel Filter", channels );
     layout->addRow( "", channels_select_layout );
+    layout->addRow( "Additional Features", features_list );
     layout->addRow( "Normalization", normalization );
+    layout->addRow( "Features Weight", features_weight );
     layout->addRow( "Filepath", filepath_layout );
     layout->addRow( "Algorithm", algorithm );
     layout->addRow( algorithm_properties );
@@ -176,6 +189,10 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             }
         }
     } );
+    QObject::connect( normalization, &QComboBox::currentTextChanged, [features_weight, normalization]
+    {
+        features_weight->setEnabled( normalization->currentText() != "None" );
+    } );
 
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
     {
@@ -198,6 +215,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         auto interpreter = py::interpreter {};
         const auto dataset = _database.dataset();
         const auto segmentation = _database.segmentation();
+        const auto features = _database.features();
 
         auto dataset_memoryview = std::optional<py::memoryview> {};
         dataset->visit( [&dataset_memoryview] ( const auto& dataset )
@@ -229,12 +247,26 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         for( const auto item : channels->selectedItems() )
             channel_indices.push_back( channels->row( item ) );
 
+        auto additional_features = std::vector<py::memoryview> {};
+        for( const auto item : features_list->selectedItems() )
+        {
+            const auto feature_index = features_list->row( item );
+            const auto feature = features->object( feature_index );
+            additional_features.push_back( py::memoryview::from_buffer(
+                feature->values().data(),
+                { feature->element_count() },
+                { sizeof( double ) }
+            ) );
+        }
+
         using namespace py::literals;
         auto locals = py::dict {
             "dataset"_a = dataset_memoryview,
             "segmentation"_a = segmentation_memoryview,
             "segment_number"_a = segment_number,
             "channel_indices"_a = channel_indices,
+            "additional_features"_a = additional_features,
+            "features_weight"_a = features_weight->value(),
             "normalization"_a = normalization->currentText().toStdString(),
             "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
@@ -265,22 +297,63 @@ try:
 
     element_indices     = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
     channel_indices     = np.array( channel_indices, dtype=np.int64 )
-    filtered_dataset    = dataset[np.ix_(element_indices, channel_indices)].copy()
-    print( f"[Embedding] Filtered dataset:  ({dataset.shape}, {dataset.dtype}) " )
-                        
-    if np.any( filtered_dataset.shape == 0 ):
+
+    element_count       = element_indices.shape[0]
+    channel_count       = channel_indices.shape[0]
+    feature_count       = len( additional_features )
+    dimension_count     = channel_count + feature_count
+    print( f"[Embedding] Element count: {element_count}, Channel count: {channel_count}, Feature count: {feature_count} " )
+
+    if element_count == 0 or dimension_count == 0:
         raise ValueError( "Filtered dataset cannot be empty" )
-                        
+
+    filtered_dataset        = np.zeros( ( element_count, dimension_count ), dtype=np.float32 )
+
+    # === Copy data in channel-wise for lower memory consumption ==== #
+    for i, channel_index in enumerate( channel_indices ):
+        filtered_dataset[:, i] = dataset[element_indices, channel_index]
+
+    # === Copy additional features === #
+    for i, feature in enumerate( additional_features ):
+        filtered_dataset[:, channel_count + i] = np.asarray( feature, copy=False )[element_indices]
+    
+    print( f"[Embedding] Filtered dataset:  ({filtered_dataset.shape}, {filtered_dataset.dtype}) " )
+    
+    # === Adjust features weight based on the number of channels and features === #
+    if channel_count == 0:
+        features_weight = 1.0
+    elif feature_count > 0:
+        features_weight = features_weight * np.sqrt( channel_count / feature_count )
+
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset... " )
-        if normalization == "Z-Score":
-            filtered_dataset_mean       = np.mean( filtered_dataset )
-            filtered_dataset_std        = np.std( filtered_dataset )
-            filtered_dataset            = ( filtered_dataset - filtered_dataset_mean ) / filtered_dataset_std
-        elif normalization == "Min-Max":
-            filtered_dataset_minimum   = np.min( filtered_dataset )
-            filtered_dataset_maximum   = np.max( filtered_dataset )
-            filtered_dataset            = ( filtered_dataset - filtered_dataset_minimum ) / ( filtered_dataset_maximum - filtered_dataset_minimum )
+        
+        # === Normalize the channels together and each feature individually === #
+        groups = [slice( 0, channel_count )]
+        for feature_index in range( feature_count ):
+            dimension_index = channel_count + feature_index
+            groups.append( slice( dimension_index, dimension_index + 1 ) )
+          
+        for group_index, group_slice in enumerate( groups ):
+            group_dataview = filtered_dataset[:, group_slice]
+
+            # === Use in-place operations to reduce memory consumption === #
+            if normalization == "Z-Score":
+                group_mean        = np.mean( group_dataview )
+                group_std         = np.std( group_dataview )
+                np.subtract( group_dataview, group_mean, out=group_dataview )
+                np.divide( group_dataview, group_std, out=group_dataview )
+
+            elif normalization == "Min-Max":
+                group_minimum     = np.min( group_dataview )
+                group_maximum     = np.max( group_dataview )
+                group_range       = group_maximum - group_minimum
+                np.subtract( group_dataview, group_minimum, out=group_dataview )
+                np.divide( group_dataview, group_range, out=group_dataview )
+            
+            if group_index > 0:
+                # === Scale features to have the same weight as channels === #
+                np.multiply( group_dataview, features_weight, out=group_dataview )
                         
     if algorithm == "PCA":
         from sklearn.decomposition import PCA
@@ -293,25 +366,26 @@ try:
 
     elif algorithm == "UMAP":
         import umap
-        umap = umap.UMAP(
+        model = umap.UMAP(
             n_components	= 2,
             n_neighbors		= umap_neighbors,
             min_dist		= umap_minimum_distance,
             metric			= umap_metric,                
             random_state	= umap_random_state,
+            n_jobs			= 1,
             verbose			= True
         )
-                        
+        
         if umap_subsampling == 1.0:
-            embedding               = umap.fit_transform( filtered_dataset ).astype( np.float32 )
+            embedding               = model.fit_transform( filtered_dataset ).astype( np.float32 )
         else:
             np.random.seed( 42 )
             subsampling_filter      = np.random.choice( (True, False), filtered_dataset.shape[0], p=(umap_subsampling, 1.0 - umap_subsampling) )
             subsampling_dataset     = filtered_dataset[subsampling_filter, :]
             print( f"[Embedding] Subsampling dataset: {subsampling_dataset.shape}" )
-                        
-            umap.fit( subsampling_dataset )
-            embedding = umap.transform( filtered_dataset ).astype( np.float32 )
+
+            model.fit( subsampling_dataset )
+            embedding = model.transform( filtered_dataset ).astype( np.float32 )
 
     elif algorithm == "t-SNE":
         from sklearn.manifold import TSNE
