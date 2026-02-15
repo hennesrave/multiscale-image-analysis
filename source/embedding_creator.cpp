@@ -65,10 +65,10 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     normalization->addItem( "Min-Max" );
     normalization->addItem( "None" );
 
-    auto features_weight = new QDoubleSpinBox {};
-    features_weight->setRange( 0.0, 10.0 );
-    features_weight->setSingleStep( 0.1 );
-    features_weight->setValue( 1.0 );
+    auto features_contribution = new QDoubleSpinBox {};
+    features_contribution->setRange( 0.0, 1.0 );
+    features_contribution->setSingleStep( 0.05 );
+    features_contribution->setValue( 0.5 );
 
     auto filepath_label = new QLabel {};
     filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
@@ -165,7 +165,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     layout->addRow( "", channels_select_layout );
     layout->addRow( "Additional Features", features_list );
     layout->addRow( "Normalization", normalization );
-    layout->addRow( "Features Weight", features_weight );
+    layout->addRow( "Features Contribution", features_contribution );
     layout->addRow( "Filepath", filepath_layout );
     layout->addRow( "Algorithm", algorithm );
     layout->addRow( algorithm_properties );
@@ -189,9 +189,9 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             }
         }
     } );
-    QObject::connect( normalization, &QComboBox::currentTextChanged, [features_weight, normalization]
+    QObject::connect( normalization, &QComboBox::currentTextChanged, [features_contribution, normalization]
     {
-        features_weight->setEnabled( normalization->currentText() != "None" );
+        features_contribution->setEnabled( normalization->currentText() != "None" );
     } );
 
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
@@ -266,7 +266,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             "segment_number"_a = segment_number,
             "channel_indices"_a = channel_indices,
             "additional_features"_a = additional_features,
-            "features_weight"_a = features_weight->value(),
+            "features_contribution"_a = features_contribution->value(),
             "normalization"_a = normalization->currentText().toStdString(),
             "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
@@ -323,7 +323,7 @@ try:
     if channel_count == 0:
         features_weight = 1.0
     elif feature_count > 0:
-        features_weight = features_weight * np.sqrt( channel_count / feature_count )
+        features_weights = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count / feature_count )
 
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset... " )
