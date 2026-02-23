@@ -11,6 +11,7 @@ MIA (Multiscale Image Analysis) is a visualization software for spectral imaging
 - Download [pybind11 v3.0.0](https://github.com/pybind/pybind11/releases/tag/v3.0.0) and copy `pybind11-3.0.0/include/pybind11/` to `external/` 
 - Download [Python 3.13.5 Windows embeddable package (64-bit)](https://www.python.org/ftp/python/3.13.5/python-3.13.5-embed-amd64.zip) and extract to `build/python/`
     - Add `"Lib/site-packages"` to `build/python/python313._pth`
+	- Copy `build/python/python3.dll` and `build/python/python313.dll` to `build/`
 - Download [get-pip.py](https://bootstrap.pypa.io/get-pip.py) and save it to `build/python/`
 - Download [RenderDoc](https://renderdoc.org/) and copy `RenderDoc/renderdoc_app.h` to `external/`
 - Download [spdlog](https://github.com/gabime/spdlog/releases/tag/v1.15.3) and copy `spdlog-1-15-3/include/spdlog/` to `external/`

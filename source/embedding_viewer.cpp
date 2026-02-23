@@ -365,6 +365,20 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
     QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::segmentation_changed );
     this->segmentation_changed();
 
+    QObject::connect( &_database, &Database::embedding_changed, this, [this] ()
+    {
+        if( const auto embedding = _database.embedding() )
+        {
+            _renderer->update_points( embedding->coordinates(), embedding->indices() );
+        }
+        else
+        {
+
+        }
+
+        _scatterplot_image_valid = false;
+        this->update();
+    } );
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
 
@@ -375,6 +389,15 @@ void EmbeddingViewer::resizeEvent( QResizeEvent* event )
 }
 void EmbeddingViewer::paintEvent( QPaintEvent* event )
 {
+    const auto embedding = _database.embedding();
+    if( !embedding )
+    {
+        return;
+    }
+
+    const auto& indices = embedding->indices();
+    const auto& coordinates = embedding->coordinates();
+
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
 
@@ -399,10 +422,10 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto iterator = std::lower_bound( _point_indices.begin(), _point_indices.end(), *element_index );
-        if( iterator != _point_indices.end() && *iterator == *element_index )
+        const auto iterator = std::lower_bound( indices.begin(), indices.end(), *element_index );
+        if( iterator != indices.end() && *iterator == *element_index )
         {
-            const auto position = _point_positions[std::distance( _point_indices.begin(), iterator )];
+            const auto position = coordinates[std::distance( indices.begin(), iterator )];
             const auto screen = this->world_to_screen( QPointF { position.x, position.y } );
 
             const auto segment_number = _database.segmentation()->segment_number( *element_index );
@@ -478,7 +501,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
             {
                 auto context_menu = QMenu {};
 
-                _database.populate_segmentation_menu( context_menu );
+                _database.populate_segmentation_menu( context_menu, true );
                 context_menu.addSeparator();
 
                 auto point_size_menu = context_menu.addMenu( "Point Size" );
@@ -516,7 +539,16 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.addSeparator();
                 context_menu.addAction( "Create Embedding", [this]
                 {
-                    this->import_embedding( EmbeddingCreator::execute( _database ) );
+                    auto embedding_creator = EmbeddingCreator { _database };
+                    if( embedding_creator.exec() == QDialog::Accepted )
+                    {
+                        this->import_embedding( embedding_creator.filepath() );
+
+                        if( auto embedding = _database.embedding() )
+                        {
+                            embedding->update_model( embedding_creator.model() );
+                        }
+                    }
                 } );
                 context_menu.addAction( "Import Embedding", [this]
                 {
@@ -571,16 +603,20 @@ void EmbeddingViewer::mouseMoveEvent( QMouseEvent* event )
         }
     }
 
-    if( _search_tree )
+    if( const auto embedding = _database.embedding() )
     {
+        const auto& indices = embedding->indices();
+        const auto& coordinates = embedding->coordinates();
+        const auto& search_tree = embedding->search_tree();
+
         const auto world = this->screen_to_world( event->position() );
-        const auto nearest_neighbor_index = _search_tree->nearest_neighbor( vec2<float> { static_cast<float>( world.x() ), static_cast<float>( world.y() ) } );
-        const auto nearest_neighbor_world = _point_positions[nearest_neighbor_index];
+        const auto nearest_neighbor_index = search_tree.nearest_neighbor( vec2<float> { static_cast<float>( world.x() ), static_cast<float>( world.y() ) } );
+        const auto nearest_neighbor_world = coordinates[nearest_neighbor_index];
         const auto nearest_neighbor_screen = this->world_to_screen( QPointF { nearest_neighbor_world.x, nearest_neighbor_world.y } );
 
         if( QLineF { event->position(), nearest_neighbor_screen }.length() <= std::sqrt( _projection_matrix( 0, 0 ) ) * _point_size + 5.0 )
         {
-            _database.update_highlighted_element_index( _point_indices[nearest_neighbor_index] );
+            _database.update_highlighted_element_index( indices[nearest_neighbor_index] );
         }
         else
         {
@@ -661,6 +697,9 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     }
 
     const auto extension = filepath.extension();
+    auto indices = std::vector<uint32_t> {};
+    auto coordinates = std::vector<vec2<float>> {};
+
     if( extension == ".csv" )
     {
         auto stream = std::ifstream { filepath };
@@ -669,9 +708,6 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
             QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
             return;
         }
-
-        _point_indices.clear();
-        _point_positions.clear();
 
         while( stream )
         {
@@ -688,8 +724,8 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
             ( stringstream >> x ).ignore( 1 );
             ( stringstream >> y ).ignore( 1 );
 
-            _point_indices.push_back( index );
-            _point_positions.push_back( vec2<float> { x, y } );
+            indices.push_back( index );
+            coordinates.push_back( vec2<float> { x, y } );
         }
     }
     else if( extension == ".mia" )
@@ -709,11 +745,11 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         }
 
         const auto element_count = stream.read<uint32_t>();
-        _point_indices.resize( element_count );
-        _point_positions.resize( element_count );
+        indices.resize( element_count );
+        coordinates.resize( element_count );
 
-        stream.read( _point_indices.data(), element_count * sizeof( uint32_t ) );
-        stream.read( _point_positions.data(), element_count * sizeof( vec2<float> ) );
+        stream.read( indices.data(), element_count * sizeof( uint32_t ) );
+        stream.read( coordinates.data(), element_count * sizeof( vec2<float> ) );
     }
     else
     {
@@ -721,10 +757,11 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         QMessageBox::critical( this, "Import Embedding...", "Unsupported file format" );
     }
 
-    _search_tree.reset( new SearchTree { _point_positions } );
-    _renderer->update_points( _point_positions, _point_indices );
-    _scatterplot_image_valid = false;
-    this->update();
+    if( !indices.empty() && !coordinates.empty() )
+    {
+        auto embedding = QSharedPointer<Embedding>::create( indices, coordinates );
+        _database.update_embedding( embedding );
+    }
 }
 void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
 {

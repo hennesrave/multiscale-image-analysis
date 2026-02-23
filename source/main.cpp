@@ -47,9 +47,15 @@ int main( int argc, char** argv )
         py::interpreter::python_home,
         py::interpreter::python_home + L"\\python313.zip",
         py::interpreter::python_home + L"\\Lib\\site-packages",
-        py::interpreter::python_home + L"\\Lib\\site-packages\\cv2"
+        //py::interpreter::python_home + L"\\Lib\\site-packages\\igraph",
+        //py::interpreter::python_home + L"\\Lib\\site-packages\\leidenalg",
+        //py::interpreter::python_home + L"\\Lib\\site-packages\\leidenalg.libs"
+        //py::interpreter::python_home + L"\\Lib\\site-packages\\cv2"
     };
-    py::interpreter::initialize();
+    if( py::interpreter::initialize() )
+    {
+        return 0;
+    }
 
     // Initialize workspace
     if( const auto dataset = DatasetImporter::execute_dialog() )

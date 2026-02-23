@@ -135,6 +135,9 @@
     <ClCompile Include="source\dataset_exporter.cpp">
       <Filter>Source Files\application\widgets</Filter>
     </ClCompile>
+    <ClCompile Include="source\embedding.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -234,6 +237,9 @@
     </QtMoc>
     <QtMoc Include="source\dataset_exporter.hpp">
       <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\embedding.hpp">
+      <Filter>Header Files\database</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

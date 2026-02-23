@@ -22,7 +22,7 @@ namespace pybind11
         return &configuration;
     }
 
-    void interpreter::initialize()
+    bool interpreter::initialize()
     {
         const auto libraries_directory = interpreter::python_home + L"/Lib";
         if( !std::filesystem::is_directory( libraries_directory ) )
@@ -57,11 +57,12 @@ namespace pybind11
                 "Python package dependencies have been installed successfully.\nPlease restart the application to apply the changes.",
                 QMessageBox::Ok
             );
-            std::exit( 0 );
+            return true;
         }
 
         _interpreter.reset( new py::scoped_interpreter { py::configuration(), 0, nullptr, false } );
         Console::info( "Finished initializing global python interpreter!" );
+        return false;
     }
 
     interpreter::~interpreter()

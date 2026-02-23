@@ -212,10 +212,10 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             return;
         }
 
-        auto interpreter = py::interpreter {};
-        const auto dataset = _database.dataset();
+        auto interpreter        = py::interpreter {};
+        const auto dataset      = _database.dataset();
         const auto segmentation = _database.segmentation();
-        const auto features = _database.features();
+        const auto features     = _database.features();
 
         auto dataset_memoryview = std::optional<py::memoryview> {};
         dataset->visit( [&dataset_memoryview] ( const auto& dataset )
@@ -270,7 +270,6 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             "normalization"_a = normalization->currentText().toStdString(),
             "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
-            "error"_a = std::string {},
 
             "pca_random_state"_a = pca_random_state->value(),
 
@@ -281,7 +280,10 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             "umap_subsampling"_a = umap_subsampling->value(),
 
             "tsne_perplexity"_a = tsne_perplexity->value(),
-            "tsne_random_state"_a = tsne_random_state->value()
+            "tsne_random_state"_a = tsne_random_state->value(),
+
+            "error"_a = std::string {},
+            "model"_a = py::none {}
         };
 
         try
@@ -293,7 +295,9 @@ try:
 
     dataset         = np.asarray( dataset, copy=False )
     segmentation    = np.asarray( segmentation, copy=False )
-    print( f"[Embedding] Dataset:           ({dataset.shape}, {dataset.dtype}), Segmentation: ({segmentation.shape}, {segmentation.dtype}) " )
+
+    print( f"[Embedding] Dataset: ({dataset.shape}, {dataset.dtype}) " )
+    print( f"[Embedding] Segmentation: ({segmentation.shape}, {segmentation.dtype}), segment number: {segment_number} " )
 
     element_indices     = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
     channel_indices     = np.array( channel_indices, dtype=np.int64 )
@@ -353,15 +357,17 @@ try:
             if group_index > 0:
                 # === Scale features to have the same weight as channels === #
                 np.multiply( group_dataview, features_weight, out=group_dataview )
-                        
+    
+    model_element_indices = element_indices.copy()
+
     if algorithm == "PCA":
         from sklearn.decomposition import PCA
-        pca = PCA(
+        model = PCA(
             n_components    = 2,
             random_state    = pca_random_state
         )
-        embedding = pca.fit_transform( filtered_dataset ).astype( np.float32 )
-        print( f"[Embedding] Explained variance: {pca.explained_variance_ratio_} (total: {np.sum(pca.explained_variance_ratio_):.3f}) " )
+        embedding = model.fit_transform( filtered_dataset ).astype( np.float32 )
+        print( f"[Embedding] Explained variance: {model.explained_variance_ratio_} (total: {np.sum(model.explained_variance_ratio_):.3f}) " )
 
     elif algorithm == "UMAP":
         import umap
@@ -383,18 +389,20 @@ try:
             subsampling_dataset     = filtered_dataset[subsampling_filter, :]
             print( f"[Embedding] Subsampling dataset: {subsampling_dataset.shape}" )
 
+            model_element_indices = model_element_indices[subsampling_filter]
+
             model.fit( subsampling_dataset )
             embedding = model.transform( filtered_dataset ).astype( np.float32 )
 
     elif algorithm == "t-SNE":
         from sklearn.manifold import TSNE
-        tsne = TSNE(
+        model = TSNE(
             n_components    = 2,
             perplexity      = tsne_perplexity,
             verbose         = 2
         )
                             
-        embedding = tsne.fit_transform( filtered_dataset ).astype( np.float32 )
+        embedding = model.fit_transform( filtered_dataset ).astype( np.float32 )
                         
     else:
         raise ValueError( f"Unknown embedding algorithm: {algorithm}" )
@@ -402,6 +410,8 @@ try:
     print( f"[Embedding] Finished computing embedding: {embedding.shape}" )
     embedding = embedding - np.mean( embedding, axis=0 )
     embedding = embedding / np.max( np.abs( embedding ) )
+
+    model = ( model, model_element_indices )
 
 except Exception as exception:
     error = str( exception ))", py::globals(), locals );
@@ -460,6 +470,7 @@ except Exception as exception:
             }
 
             _filepath = filepath;
+            _model = locals["model"];
             this->accept();
         }
         else
@@ -474,4 +485,8 @@ except Exception as exception:
 const std::filesystem::path& EmbeddingCreator::filepath() const noexcept
 {
     return _filepath;
+}
+py::object EmbeddingCreator::model() const noexcept
+{
+    return _model;
 }

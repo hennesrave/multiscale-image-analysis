@@ -1,5 +1,5 @@
-h5py==3.14.0
-opencv-contrib-python==4.12.0.88
-opencv-python==4.12.0.88
-umap-learn==0.5.9.post2
-zarr==3.0.10
+hdbscan==0.8.41
+h5py==3.15.1
+leidenalg==0.11.0
+umap-learn==0.5.11
+zarr==3.1.5

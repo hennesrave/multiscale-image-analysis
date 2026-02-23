@@ -21,7 +21,7 @@
 
 // ----- ImageViewer ----- //
 
-ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { database }, _dataset { database.dataset() }, _segmentation { database.segmentation() }
+ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { database }
 {
     this->setFocusPolicy( Qt::WheelFocus );
     this->setMouseTracking( true );
@@ -61,12 +61,15 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     painter.setRenderHint( QPainter::Antialiasing );
     painter.fillRect( _image_rectangle, Qt::black );
 
+    const auto dataset = _database.dataset();
+    const auto segmentation = _database.segmentation();
+
     // Render image
     if( const auto colormap = _colormap.lock() )
     {
         if( const auto& colors = colormap->colors(); colors.size() )
         {
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto dimensions = dataset->spatial_metadata()->dimensions;
             const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
             painter.setOpacity( _image_opacity );
             painter.drawImage( _image_rectangle, image );
@@ -75,8 +78,8 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     }
 
     // Render segmentation colors
-    const auto& segmentation_colors = _segmentation->element_colors();
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto& segmentation_colors = segmentation->element_colors();
+    const auto dimensions = dataset->spatial_metadata()->dimensions;
     const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
     painter.setOpacity( _segmentation_opacity );
     painter.drawImage( _image_rectangle, image );
@@ -99,7 +102,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto spatial_metadata = _dataset->spatial_metadata();
+        const auto spatial_metadata = dataset->spatial_metadata();
         const auto dimensions = spatial_metadata->dimensions;
         const auto pixel = spatial_metadata->coordinates( *element_index );
         const auto screen = this->pixel_to_screen( pixel );
@@ -150,7 +153,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     // Render highlighted element information
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto pixel = _dataset->spatial_metadata()->coordinates( *element_index );
+        const auto pixel = dataset->spatial_metadata()->coordinates( *element_index );
         const auto position = QPointF { 0.0, 0.0 };
 
         auto labels_string = QString {
@@ -352,10 +355,14 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 if( begin.x > end.x ) std::swap( begin.x, end.x );
                 if( begin.y > end.y ) std::swap( begin.y, end.y );
 
-                const auto spatial_metadata = _dataset->spatial_metadata();
-                const auto active_segment = _database.active_segment();
+                const auto dataset          = _database.dataset();
+                const auto segmentation     = _database.segmentation();
+                const auto active_segment   = _database.active_segment();
+
+                const auto spatial_metadata = dataset->spatial_metadata();
                 const auto segment_number = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->number() : 0;
-                auto segmentation_editor = _segmentation->editor();
+
+                auto segmentation_editor = segmentation->editor();
                 for( auto x = begin.x; x <= end.x; ++x )
                 {
                     for( auto y = begin.y; y <= end.y; ++y )
@@ -400,8 +407,9 @@ void ImageViewer::mouseMoveEvent( QMouseEvent* event )
 
     if( _image_rectangle.contains( event->position() ) )
     {
+        const auto spatial_metadata = _database.dataset()->spatial_metadata();
         const auto pixel = this->screen_to_pixel( event->position() );
-        _database.update_highlighted_element_index( _dataset->spatial_metadata()->element_index( pixel ) );
+        _database.update_highlighted_element_index( spatial_metadata->element_index( pixel ) );
     }
     else
     {
@@ -419,7 +427,7 @@ void ImageViewer::leaveEvent( QEvent* event )
 
 QPointF ImageViewer::pixel_to_screen( vec2<uint32_t> pixel ) const
 {
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
     const auto x = ( pixel.x + 0.5 ) / dimensions.x;
     const auto y = ( pixel.y + 0.5 ) / dimensions.y;
 
@@ -434,7 +442,7 @@ vec2<uint32_t> ImageViewer::screen_to_pixel( QPointF screen ) const
     const auto x = ( screen.x() - _image_rectangle.left() ) / _image_rectangle.width();
     const auto y = ( screen.y() - _image_rectangle.top() ) / _image_rectangle.height();
 
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
     const vec2<uint32_t> pixel {
         static_cast<uint32_t>( std::clamp( x * dimensions.x, 0.0, static_cast<double>( dimensions.x - 1 ) ) ),
         static_cast<uint32_t>( std::clamp( y * dimensions.y, 0.0, static_cast<double>( dimensions.y - 1 ) ) )
@@ -444,8 +452,9 @@ vec2<uint32_t> ImageViewer::screen_to_pixel( QPointF screen ) const
 
 void ImageViewer::reset_image_rectangle()
 {
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
-    const auto scaling = std::min(
+    const auto dataset      = _database.dataset();
+    const auto dimensions   = dataset->spatial_metadata()->dimensions;
+    const auto scaling      = std::min(
         ( this->width() - 20.0 ) / dimensions.x,
         ( this->height() - 20.0 ) / dimensions.y
     );
@@ -462,8 +471,8 @@ void ImageViewer::import_overlay()
         {
             auto interpreter = py::interpreter {};
 
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
-            const auto dataset = _database.dataset();
+            const auto dataset      = _database.dataset();
+            const auto dimensions   = dataset->spatial_metadata()->dimensions;
 
             auto dataset_memoryview = std::optional<py::memoryview> {};
             dataset->visit( [&dataset_memoryview, dimensions] ( const auto& dataset )
@@ -631,7 +640,7 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
         if( auto colormap = _colormap.lock() )
         {
             const auto& colors = colormap->colors();
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
             const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
             painter.setOpacity( _image_opacity );
             painter.drawImage( image.rect(), image );

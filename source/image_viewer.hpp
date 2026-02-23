@@ -44,8 +44,6 @@ private:
     void export_matrix() const;
 
     Database& _database;
-    QSharedPointer<const Dataset> _dataset;
-    QSharedPointer<Segmentation> _segmentation;
     QWeakPointer<Colormap> _colormap;
     Tensor::with_rank<3>::with_type<uint8_t> _overlay_image;
 
