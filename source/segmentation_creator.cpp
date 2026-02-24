@@ -115,10 +115,6 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
     hdbscan_cluster_selection_epsilon->setSingleStep( 0.05 );
     hdbscan_cluster_selection_epsilon->setValue( 0.0 );
 
-    auto hdbscan_metric = new QComboBox {};
-    hdbscan_metric->addItem( "Euclidean" );
-    hdbscan_metric->addItem( "Cosine" );
-
     auto hdbscan_subsampling = new QDoubleSpinBox {};
     hdbscan_subsampling->setRange( 0.01, 1.0 );
     hdbscan_subsampling->setSingleStep( 0.01 );
@@ -130,7 +126,6 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
     hdbscan_layout->addRow( "Minimum Cluster Size", hdbscan_min_cluster_size );
     hdbscan_layout->addRow( "Minimum Samples", hdbscan_min_samples );
     hdbscan_layout->addRow( "Cluster Selection Epsilon", hdbscan_cluster_selection_epsilon );
-    hdbscan_layout->addRow( "Metric", hdbscan_metric );
     hdbscan_layout->addRow( "Subsampling", hdbscan_subsampling );
 
     // Initialize Leiden properties
@@ -297,7 +292,6 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
             "hdbscan_min_cluster_size"_a = static_cast<int>( hdbscan_min_cluster_size->value() ),
             "hdbscan_min_samples"_a = static_cast<int>( hdbscan_min_samples->value() ),
             "hdbscan_cluster_selection_epsilon"_a = hdbscan_cluster_selection_epsilon->value(),
-            "hdbscan_metric"_a = hdbscan_metric->currentText().toLower().toStdString(),
             "hdbscan_subsampling"_a = hdbscan_subsampling->value(),
 
             "leiden_resolution_parameter"_a = leiden_resolution_parameter->value(),
@@ -380,7 +374,7 @@ try:
                 min_cluster_size            = hdbscan_min_cluster_size,
                 min_samples                 = hdbscan_min_samples,
                 cluster_selection_epsilon   = hdbscan_cluster_selection_epsilon,
-                metric                      = hdbscan_metric,
+                metric                      = "euclidean",
                 core_dist_n_jobs            = 1
             ).fit( algorithm_input )
             segment_numbers[element_indices] = np.maximum( clustering.labels_ + 1, 0 )
@@ -398,7 +392,7 @@ try:
                 min_cluster_size            = hdbscan_min_cluster_size,
                 min_samples                 = hdbscan_min_samples,
                 cluster_selection_epsilon   = hdbscan_cluster_selection_epsilon,
-                metric                      = hdbscan_metric,
+                metric                      = "euclidean",
                 core_dist_n_jobs            = 1
             ).fit( subsampling_algorithm_input )
 

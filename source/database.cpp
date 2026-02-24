@@ -143,7 +143,7 @@ void Database::populate_segmentation_menu( QMenu& context_menu, bool enable_prop
 
     if( enable_propogate )
     {
-        segmentation_menu->addAction( "Propogate", [this]
+        segmentation_menu->addAction( "Propagate", [this]
         {
             if( !_embedding )
             {
