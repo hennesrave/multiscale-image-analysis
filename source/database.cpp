@@ -159,8 +159,15 @@ void Database::populate_segmentation_menu( QMenu& context_menu, bool enable_prop
                 { sizeof( uint32_t ) }
             );
 
+            const auto& indices = _embedding->indices();
+            const auto embedding_indices_memoryview = py::memoryview::from_buffer(
+                indices.data(),
+                { indices.size() },
+                { sizeof( uint32_t ) }
+            );
+
             const auto& coordinates = _embedding->coordinates();
-            const auto embedding_memoryview = py::memoryview::from_buffer(
+            const auto embedding_coordinates_memoryview = py::memoryview::from_buffer(
                 reinterpret_cast<const float*>( coordinates.data() ),
                 { coordinates.size(), size_t { 2 } },
                 { 2 * sizeof( float ), sizeof( float ) }
@@ -169,7 +176,8 @@ void Database::populate_segmentation_menu( QMenu& context_menu, bool enable_prop
             using namespace py::literals;
             auto locals = py::dict {
                 "segmentation"_a = segmentation_memoryview,
-                "embedding"_a = embedding_memoryview,
+                "embedding_indices"_a = embedding_indices_memoryview,
+                "embedding"_a = embedding_coordinates_memoryview,
                 "error"_a = std::string {}
             };
 
@@ -183,21 +191,32 @@ try:
     segmentation    = np.asarray( segmentation, copy=False )
     embedding       = np.asarray( embedding, copy=False )
 
-    assigned_filter     = segmentation > 0
-    unassigned_filter   = ~assigned_filter
+    assigned_filter     = np.full( segmentation.shape[0], False, dtype=bool )
+    unassigned_filter   = np.full( segmentation.shape[0], False, dtype=bool )
+
+    indices                     = np.asarray( embedding_indices, copy=False )
+    assigned_filter[indices]    = True
+    unassigned_filter[indices]  = True
+
+    assigned_filter     = assigned_filter & (segmentation > 0)
+    unassigned_filter   = unassigned_filter & (segmentation == 0)
 
     assigned_count      = np.sum( assigned_filter )
-    neighbor_count      = min( 15, assigned_count - 1 )
+    unassigned_count    = np.sum( unassigned_filter )
 
     if assigned_count == 0:
         raise Exception( "Cannot propagate empty segmentation." )
 
-    classifier = KNeighborsClassifier( n_neighbors=neighbor_count, n_jobs=-1 )
-    classifier.fit( embedding[assigned_filter, :], segmentation[assigned_filter] )
+    if unassigned_count == 0:
+        raise Exception( "No unassigned datapoints to propagate to." )
+
+    neighbor_count  = min( 15, assigned_count - 1 )
+    classifier      = KNeighborsClassifier( n_neighbors=neighbor_count, n_jobs=-1 )
+    classifier.fit( embedding[assigned_filter[indices], :], segmentation[assigned_filter] )
     
     print( f"[Segmentation] Predicting labels for unassigned datapoints..." )
     segment_numbers                     = segmentation.copy()
-    segment_numbers[unassigned_filter]  = classifier.predict( embedding[unassigned_filter, :] )
+    segment_numbers[unassigned_filter]  = classifier.predict( embedding[unassigned_filter[indices], :] )
 
     print( f"[Segmentation] Propagation complete." )
 
@@ -207,7 +226,7 @@ except Exception as exception:
             if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
             {
                 Console::error( std::format( "Python error during segmentation propagation: {}", error ) );
-                QMessageBox::critical( nullptr, "", "Failed to propagate segmentation", QMessageBox::Ok );
+                QMessageBox::critical( nullptr, "", "Failed to propagate segmentation.", QMessageBox::Ok );
                 return;
             }
 
