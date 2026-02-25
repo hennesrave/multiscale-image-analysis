@@ -2,7 +2,6 @@
 
 #include "embedding_creator.hpp"
 #include "renderdoc_app.h"
-#include "segmentation_manager.hpp"
 
 #include <qactiongroup.h>
 #include <qapplication.h>
@@ -10,13 +9,11 @@
 #include <qclipboard.h>
 #include <qevent.h>
 #include <qfiledialog.h>
-#include <qlabel.h>
 #include <qmessagebox.h>
 #include <qmenu.h>
 #include <qmimedata.h>
 #include <qopenglversionfunctionsfactory.h>
 #include <qpainter.h>
-#include <qwidgetaction.h>
 
 #define NOMINMAX
 #include <windows.h>
@@ -707,8 +704,9 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     }
 
     const auto extension = filepath.extension();
-    auto indices = std::vector<uint32_t> {};
-    auto coordinates = std::vector<vec2<float>> {};
+    auto indices        = std::vector<uint32_t> {};
+    auto coordinates    = std::vector<vec2<float>> {};
+    auto model          = py::object {};
 
     if( extension == ".csv" )
     {
@@ -760,6 +758,12 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
 
         stream.read( indices.data(), element_count * sizeof( uint32_t ) );
         stream.read( coordinates.data(), element_count * sizeof( vec2<float> ) );
+
+        if( stream.application_version() >= config::ApplicationVersion { 1, 0, 4 } && !stream.finished() )
+        {
+            Console::info( "Importing embedding model..." );
+            stream.read( model );
+        }
     }
     else
     {
@@ -770,6 +774,7 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     if( !indices.empty() && !coordinates.empty() )
     {
         auto embedding = QSharedPointer<Embedding>::create( indices, coordinates );
+        embedding->update_model( model );
         _database.update_embedding( embedding );
     }
 }

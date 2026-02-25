@@ -10,6 +10,37 @@ namespace config
         uint8_t major = 1;
         uint8_t minor = 0;
         uint8_t patch = 4;
+
+        bool operator==( const ApplicationVersion& other ) const noexcept
+        {
+            return major == other.major && minor == other.minor && patch == other.patch;
+        }
+        bool operator!=( const ApplicationVersion& other ) const noexcept
+        {
+            return !( *this == other );
+        }
+
+        bool operator<( const ApplicationVersion& other ) const noexcept
+        {
+            if( major != other.major )
+                return major < other.major;
+            if( minor != other.minor )
+                return minor < other.minor;
+            return patch < other.patch;
+        }
+        bool operator>( const ApplicationVersion& other ) const noexcept
+        {
+            return other < *this;
+        }
+
+        bool operator<=( const ApplicationVersion& other ) const noexcept
+        {
+            return !( other < *this );
+        }
+        bool operator>=( const ApplicationVersion& other ) const noexcept
+        {
+            return !( *this < other );
+        }
     };
 
     constexpr inline ApplicationVersion application_version;

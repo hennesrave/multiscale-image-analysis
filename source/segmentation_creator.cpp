@@ -403,16 +403,13 @@ try:
         import igraph
         import umap
 
-        if leiden_model is None:
+        if leiden_model is None or not isinstance( leiden_model, umap.UMAP ):
             raise ValueError( "Leiden algorithm requires a UMAP embedding" )
 
-        model, model_element_indices = leiden_model
-
-        if not isinstance( model, umap.UMAP ):
-            raise ValueError( "Leiden algorithm requires a UMAP embedding" )
+        model_element_indices = np.asarray( embedding_indices, copy=False )
 
         print( f"[Segmentation] Building graph... " )
-        coo_graph   = model.graph_.tocoo()
+        coo_graph   = leiden_model.graph_.tocoo()
         sources     = coo_graph.row
         targets     = coo_graph.col
         weights     = coo_graph.data

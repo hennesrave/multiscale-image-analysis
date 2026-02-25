@@ -87,6 +87,10 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     filepath_layout->addWidget( filepath_label, 1 );
     filepath_layout->addWidget( filepath_button );
 
+    auto export_model = new QComboBox {};
+    export_model->addItem( "No" );
+    export_model->addItem( "Yes" );
+
     auto algorithm = new QComboBox {};
     algorithm->addItem( "PCA" );
     algorithm->addItem( "UMAP" );
@@ -167,6 +171,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     layout->addRow( "Normalization", normalization );
     layout->addRow( "Features Contribution", features_contribution );
     layout->addRow( "Filepath", filepath_layout );
+    layout->addRow( "Export Model", export_model );
     layout->addRow( "Algorithm", algorithm );
     layout->addRow( algorithm_properties );
     layout->addRow( button_create );
@@ -209,6 +214,14 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         if( filepath_label->text().isEmpty() )
         {
             QMessageBox::warning( nullptr, "Create Embedding...", "Please select a valid filepath" );
+            return;
+        }
+
+        const auto filepath = std::filesystem::path { filepath_label->text().toStdWString() };
+        const auto extension = filepath.extension();
+        if( extension == ".csv" && export_model->currentText() == "Yes" )
+        {
+            QMessageBox::warning( nullptr, "Create Embedding...", "Exporting the model is not supported for CSV format. Please select MIA format or disable model export." );
             return;
         }
 
@@ -411,8 +424,6 @@ try:
     embedding = embedding - np.mean( embedding, axis=0 )
     embedding = embedding / np.max( np.abs( embedding ) )
 
-    model = ( model, model_element_indices )
-
 except Exception as exception:
     error = str( exception ))", py::globals(), locals );
         }
@@ -453,13 +464,19 @@ except Exception as exception:
                     return;
                 }
 
-                const auto element_indices = locals["element_indices"].cast<py::array_t<uint32_t>>();
-                const auto embedding = locals["embedding"].cast<py::array_t<float>>();
+                const auto element_indices  = locals["element_indices"].cast<py::array_t<uint32_t>>();
+                const auto embedding        = locals["embedding"].cast<py::array_t<float>>();
+                const auto model            = locals["model"].cast<py::object>();
 
                 stream.write( std::string { "Embedding" } );
                 stream.write( static_cast<uint32_t>( element_indices.size() ) );
                 stream.write( element_indices.data(), element_indices.nbytes() );
                 stream.write( embedding.data(), embedding.nbytes() );
+
+                if( export_model->currentText() == "Yes" )
+                {
+                    stream.write( model );
+                }
             }
             else
             {

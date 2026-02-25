@@ -1,5 +1,6 @@
 #pragma once
 #include "configuration.hpp"
+#include "python.hpp"
 
 #include <filesystem>
 #include <fstream>
@@ -54,6 +55,9 @@ template<> BinaryStream& BinaryStream::read( BinaryStream& stream, std::string& 
 template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const QSharedPointer<Dataset>& dataset );
 template<> BinaryStream& BinaryStream::read( BinaryStream& stream, QSharedPointer<Dataset>& dataset );
 
+template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const py::object& object );
+template<> BinaryStream& BinaryStream::read( BinaryStream& stream, py::object& object );
+
 // ----- MIAFileStream ----- //
 
 class MIAFileStream : public BinaryStream
@@ -66,6 +70,8 @@ public:
 
     operator bool() const noexcept;
     const config::ApplicationVersion& application_version() const noexcept;
+
+    bool finished();
 
 private:
     std::fstream _filestream;
