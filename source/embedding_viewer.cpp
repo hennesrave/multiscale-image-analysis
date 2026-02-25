@@ -53,6 +53,12 @@ EmbeddingRenderer::EmbeddingRenderer()
     framebuffer_format.setInternalTextureFormat( GL_RGBA32F );
     _framebuffer.reset( new QOpenGLFramebufferObject( QSize { _texture_size, _texture_size }, framebuffer_format ) );
 
+    float border_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    _functions->glBindTexture( GL_TEXTURE_2D, _framebuffer->texture() );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color );
+
     _shader_programs.render_points.create();
     _shader_programs.render_points.addShaderFromSourceCode( QOpenGLShader::Vertex, R"(
         #version 450
@@ -179,6 +185,7 @@ EmbeddingRenderer::EmbeddingRenderer()
             {
                 const vec2 position = ( projection_matrix * vec4( point_positions[index], 0.0, 1.0 ) ).xy;
                 const vec2 texture_position = ( position + 1.0 ) / 2.0;
+
                 if( texture( selection_texture, texture_position ).x != 0.0 )
                 {
                     segmentation_numbers[point_indices[index]] = segment_number;
@@ -214,6 +221,13 @@ void EmbeddingRenderer::update_texture_size( int texture_size )
     framebuffer_format.setAttachment( QOpenGLFramebufferObject::NoAttachment );
     framebuffer_format.setInternalTextureFormat( GL_RGBA32F );
     _framebuffer.reset( new QOpenGLFramebufferObject( QSize { _texture_size, _texture_size }, framebuffer_format ) );
+
+    float border_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    _functions->glBindTexture( GL_TEXTURE_2D, _framebuffer->texture() );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color );
+
     _context.doneCurrent();
 }
 void EmbeddingRenderer::update_points( const std::vector<vec2<float>>& point_positions, const std::vector<uint32_t>& point_indices )
@@ -370,10 +384,6 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
         if( const auto embedding = _database.embedding() )
         {
             _renderer->update_points( embedding->coordinates(), embedding->indices() );
-        }
-        else
-        {
-
         }
 
         _scatterplot_image_valid = false;
