@@ -3,8 +3,6 @@
 #include "database.hpp"
 #include "utility.hpp"
 
-#include "feature_selector.hpp"
-
 #include "boxplot_viewer.hpp"
 #include "colormap_viewer.hpp"
 #include "embedding_viewer.hpp"
@@ -15,7 +13,6 @@
 #include <qlayout.h>
 #include <qsplitter.h>
 #include <qstackedlayout.h>
-#include <qtimer.h>
 
 Workspace::Workspace( Database& database ) : _database { database }
 {
