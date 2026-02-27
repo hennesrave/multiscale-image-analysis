@@ -394,6 +394,7 @@ try:
 
     channel_count_total = 0
     feature_count_total = 0
+    dataset_count_total = 0
 
     for dataset_index in range( len( datasets ) ):
         dataset     = np.asarray( datasets[dataset_index], copy=False )
@@ -407,6 +408,9 @@ try:
 
         channel_count_total += channels.size
         feature_count_total += len( features )
+
+        if channels.size != 0 or len( features ) == 0:
+            dataset_count_total += 1
 
         print( f"[Embedding] Dataset {dataset_index}: ({dataset.shape}, {dataset.dtype}), channels: {channels.shape}, features: {len( features )} " )
 
@@ -468,7 +472,7 @@ try:
 
             group_dataview = combined_dataset[:, group_slice]
 
-            if normalization == "Z-Score":
+            if normalization == "Z-score":
                 group_mean        = np.mean( group_dataview )
                 group_std         = np.std( group_dataview )
                 np.subtract( group_dataview, group_mean, out=group_dataview )
@@ -483,7 +487,13 @@ try:
             
             if is_feature:
                 np.multiply( group_dataview, features_weight, out=group_dataview )
+            else:
+                dataset_weight = np.sqrt(channel_count_total / (dataset_count_total * group_dataview.shape[1]))
+                np.multiply( group_dataview, dataset_weight, out=group_dataview )
     
+            total_variance = np.var( group_dataview )
+            print( f"[Embedding] Group variance after normalization: {total_variance:.6f} " )
+
     # === Train model and compute embedding ==== #
     model                   = None
     model_datapoint_indices = datapoint_indices.copy()
