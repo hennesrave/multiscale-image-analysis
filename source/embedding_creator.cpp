@@ -237,6 +237,8 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     {
         layout->addRow( "", dataset_selector );
         layout->addRow( dataset_properties );
+
+        QObject::connect( dataset_selector, &QComboBox::currentIndexChanged, dataset_properties, &QStackedWidget::setCurrentIndex );
     }
 
     layout->addRow( "Normalization", normalization );

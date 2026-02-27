@@ -353,7 +353,7 @@ QSharedPointer<Dataset> DatasetImporter::from_la_icp_ms( const std::filesystem::
     for( size_t value_index = 0; value_index < intensities.size(); ++value_index )
     {
         const auto x = static_cast<uint32_t>( value_index % dimensions.x );
-        const auto y = static_cast<uint32_t>(  ( value_index / dimensions.x ) % dimensions.y );
+        const auto y = static_cast<uint32_t>( ( value_index / dimensions.x ) % dimensions.y );
         const auto channel_index = static_cast<uint32_t>( value_index / ( dimensions.x * dimensions.y ) );
 
         const auto element_index = spatial_metadata->element_index( vec2<uint32_t> { x, y } );
@@ -1086,7 +1086,7 @@ QSharedPointer<Dataset> DatasetImporter::from_zarr( const std::filesystem::path&
         auto hypercube = static_cast<py::array>( zarr_dataset["hypercube"][py::make_tuple()] );
         auto wavenumbers = static_cast<py::array>( zarr_dataset["wvnm"][py::make_tuple()].attr( "astype" )( py::dtype::of<double>() ) );
 
-        if( !hypercube.dtype().is( py::dtype::of<float>() ) )
+        if( !( hypercube.dtype().kind() == 'f' && hypercube.dtype().itemsize() == sizeof( float ) ) )
         {
             QMessageBox::critical( nullptr, "", "Unexpected hypercube data type: " + QString::fromStdString( py::str { hypercube.dtype() } ), QMessageBox::Ok );
             return nullptr;
