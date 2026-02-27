@@ -870,9 +870,9 @@ Array<vec4<float>> ColormapEmbedding::compute_colors() const
         const auto z            = 1.08883f * ( fz > delta? fz * fz * fz : ( fz - 4.0f / 29.0f ) * 3.0f * delta * delta );
 
         const auto matrix       = std::array<vec3<float>, 3> {
-            vec3<float>{ 3.2406f, -1.5372f, -0.4986f },
-            vec3<float>{ -0.9689f, 1.8758f, 0.0415f },
-            vec3<float>{ 0.0557f, -0.2040f, 1.0570f }
+            vec3<float>{  3.2406f, -1.5372f, -0.4986f },
+            vec3<float>{ -0.9689f,  1.8758f,  0.0415f },
+            vec3<float>{  0.0557f, -0.2040f,  1.0570f }
         };
         const auto R            = std::clamp( matrix[0].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );
         const auto G            = std::clamp( matrix[1].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );

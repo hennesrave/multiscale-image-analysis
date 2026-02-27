@@ -62,6 +62,7 @@ EmbeddingRenderer::EmbeddingRenderer()
         
         layout( location = 0 ) uniform mat4 projection_matrix;
         layout( location = 1 ) uniform float point_size;
+        layout( location = 2 ) uniform bool use_point_colors;
 
         layout( binding = 0 ) restrict readonly buffer PointPositionsBuffer
         {
@@ -79,6 +80,10 @@ EmbeddingRenderer::EmbeddingRenderer()
         {
             vec4 segmentation_colors[];
         };
+        layout( binding = 4 ) restrict readonly buffer PointColorsBuffer
+        {
+            vec4 point_colors[];
+        };
 
         layout( location = 0 ) out vec4 color_output;
 
@@ -87,9 +92,16 @@ EmbeddingRenderer::EmbeddingRenderer()
             gl_Position     = projection_matrix * vec4( point_positions[gl_VertexID], 0.0, 1.0 );
             gl_PointSize    = point_size;
 
-            const uint point_index      = point_indices[gl_VertexID];
-            const uint segment_number   = segmentation_numbers[point_index];
-            color_output                = segmentation_colors[segment_number];
+            if( use_point_colors ) 
+            {
+                color_output = point_colors[gl_VertexID];
+            }
+            else
+            {
+                const uint point_index      = point_indices[gl_VertexID];
+                const uint segment_number   = segmentation_numbers[point_index];
+                color_output                = segmentation_colors[segment_number];
+            }
         }
     )" );
     _shader_programs.render_points.addShaderFromSourceCode( QOpenGLShader::Fragment, R"(
@@ -202,6 +214,7 @@ EmbeddingRenderer::EmbeddingRenderer()
     _buffers.point_indices.create();
     _buffers.segmentation_numbers.create();
     _buffers.segment_colors.create();
+    _buffers.point_colors.create();
     _buffers.selection_polygon.create();
 }
 
@@ -251,8 +264,17 @@ void EmbeddingRenderer::update_segmentation( Array<uint32_t> segmentation_number
 
     _context.doneCurrent();
 }
+void EmbeddingRenderer::update_point_colors( Array<vec4<float>> point_colors )
+{
+    _context.makeCurrent( &_surface );
 
-QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat point_size )
+    _buffers.point_colors.bind();
+    _buffers.point_colors.allocate( point_colors.data(), static_cast<int>( point_colors.size() * sizeof( vec4<float> ) ) );
+
+    _context.doneCurrent();
+}
+
+QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat point_size, bool use_point_colors )
 {
     _context.makeCurrent( &_surface );
 
@@ -275,11 +297,16 @@ QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat p
     _shader_programs.render_points.bind();
     _shader_programs.render_points.setUniformValue( "projection_matrix", projection_matrix );
     _shader_programs.render_points.setUniformValue( "point_size", point_size );
+    _shader_programs.render_points.setUniformValue( "use_point_colors", use_point_colors );
 
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 0, _buffers.point_positions.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 1, _buffers.point_indices.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 2, _buffers.segmentation_numbers.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 3, _buffers.segment_colors.bufferId() );
+    if( use_point_colors )
+    {
+        _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 4, _buffers.point_colors.bufferId() );
+    }
 
     _functions->glEnable( GL_PROGRAM_POINT_SIZE );
     _functions->glEnable( GL_BLEND );
@@ -374,6 +401,10 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
     const auto segmentation = _database.segmentation();
     QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::update_coloring );
     QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::update_coloring );
+
+    const auto colormap_embedding = _database.colormap_embedding();
+    QObject::connect( colormap_embedding.get(), &ColormapEmbedding::colors_changed, this, &EmbeddingViewer::update_coloring );
+
     this->update_coloring();
 
     QObject::connect( &_database, &Database::embedding_changed, this, [this] ()
@@ -418,7 +449,8 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     if( !_scatterplot_image_valid )
     {
         const auto adjusted_point_size = ( _point_size * std::sqrt( _projection_matrix( 0, 0 ) ) ) / 72.0 * QGuiApplication::primaryScreen()->physicalDotsPerInch() / ( static_cast<double>( extent ) / _renderer->texture_size() );
-        _scatterplot_image = _renderer->render( _projection_matrix, adjusted_point_size );
+        const auto user_point_colors = _coloring == ColoringMode::eFalseColoring;
+        _scatterplot_image = _renderer->render( _projection_matrix, adjusted_point_size, user_point_colors );
         _scatterplot_image_valid = true;
     }
 
@@ -736,17 +768,14 @@ void EmbeddingViewer::update_coloring()
         const auto& indices = embedding->indices();
         const auto& colors = colormap->colors();
 
-        auto segment_numbers = Array<uint32_t>::allocate( indices.size() );
-        std::iota( segment_numbers.begin(), segment_numbers.end(), 0 );
-
-        auto segment_colors = Array<vec4<float>>::allocate( indices.size() );
-        for( uint32_t i = 0; i < colors.size(); ++i )
+        auto point_colors = Array<vec4<float>>::allocate( indices.size() );
+        for( size_t i = 0; i < point_colors.size(); ++i )
         {
             const auto color = colors[indices[i]];
-            segment_colors[i] = vec4<float> { color.x, color.y, color.z, 1.0f };
+            point_colors[i] = vec4<float> { color.x, color.y, color.z, 1.0f };
         }
 
-        _renderer->update_segmentation( std::move( segment_numbers ), std::move( segment_colors ) );
+        _renderer->update_point_colors( std::move( point_colors ) );
     }
 
     _scatterplot_image_valid = false;
@@ -853,7 +882,8 @@ void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
         _renderer->update_texture_size( scaling * EmbeddingRenderer::default_texture_size );
         const auto extent = std::min( this->width(), this->height() ) - 20;
         const auto adjusted_point_size = ( _point_size * std::sqrt( _projection_matrix( 0, 0 ) ) ) / 72.0 * QGuiApplication::primaryScreen()->physicalDotsPerInch() / ( static_cast<double>( extent ) / _renderer->texture_size() );
-        const auto image = _renderer->render( _projection_matrix, adjusted_point_size );
+        const auto user_point_colors = _coloring == ColoringMode::eFalseColoring;
+        const auto image = _renderer->render( _projection_matrix, adjusted_point_size, user_point_colors );
         _renderer->update_texture_size( EmbeddingRenderer::default_texture_size );
 
         if( filepath == "clipboard" )

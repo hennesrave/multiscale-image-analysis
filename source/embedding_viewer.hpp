@@ -29,8 +29,9 @@ public:
 
     void update_points( const std::vector<vec2<float>>& point_positions, const std::vector<uint32_t>& point_indices );
     void update_segmentation( Array<uint32_t> segmentation_numbers, Array<vec4<float>> segment_colors );
+    void update_point_colors( Array<vec4<float>> point_colors );
 
-    QImage render( const QMatrix4x4& projection_matrix, GLfloat point_size );
+    QImage render( const QMatrix4x4& projection_matrix, GLfloat point_size, bool use_point_colors );
     Array<uint32_t> update_segmentation( const QMatrix4x4& projection_matrix, const Array<vec2<float>>& selection_polygon, uint32_t segment_number );
 
 private:
@@ -50,6 +51,7 @@ private:
         QOpenGLBuffer point_indices;
         QOpenGLBuffer segmentation_numbers;
         QOpenGLBuffer segment_colors;
+        QOpenGLBuffer point_colors;
         QOpenGLBuffer selection_polygon;
     } _buffers;
 

@@ -29,6 +29,9 @@ ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { databas
     const auto segmentation = _database.segmentation();
     QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, qOverload<>( &QWidget::update ) );
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
+
+    const auto colormap_embedding = _database.colormap_embedding();
+    QObject::connect( colormap_embedding.get(), &ColormapEmbedding::colors_changed, this, qOverload<>( &QWidget::update ) );
 }
 
 void ImageViewer::update_colormap( QSharedPointer<Colormap> colormap )
