@@ -145,3 +145,8 @@ Workspace::Workspace( Database& database ) : _database { database }
     _database.colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::turbo.clone() ) );
     _database.features()->append( feature );
 }
+
+void Workspace::closeEvent( QCloseEvent* event )
+{
+    emit closed();
+}

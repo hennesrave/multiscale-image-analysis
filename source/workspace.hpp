@@ -16,7 +16,12 @@ class Workspace : public QWidget
 public:
     Workspace( Database& database );
 
+signals:
+    void closed() const;
+
 private:
+    void closeEvent( QCloseEvent* event ) override;
+
     Database& _database;
 
     BoxplotViewer* _boxplot_viewer = nullptr;

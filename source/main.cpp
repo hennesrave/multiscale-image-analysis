@@ -134,14 +134,12 @@ int main( int argc, char** argv )
                     this->import_dataset( dataset );
                 }
             } );
-            QObject::connect( workspace.get(), &QObject::destroyed, [&, workspace = workspace.get()]
+            QObject::connect( workspace.get(), &Workspace::closed, [&, workspace = workspace.get()]
             {
                 for( size_t i = 0; i < _workspaces.size(); ++i )
                 {
                     if( _workspaces[i].get() == workspace )
                     {
-                        _workspaces[i]->deleteLater();
-                        _workspaces[i].release();
                         _workspaces.erase( _workspaces.begin() + i );
                         _databases.erase( _databases.begin() + i );
                         break;
