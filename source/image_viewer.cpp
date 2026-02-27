@@ -77,13 +77,28 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         }
     }
 
-    // Render segmentation colors
-    const auto& segmentation_colors = segmentation->element_colors();
-    const auto dimensions = dataset->spatial_metadata()->dimensions;
-    const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-    painter.setOpacity( _segmentation_opacity );
-    painter.drawImage( _image_rectangle, image );
-    painter.setOpacity( 1.0 );
+    if( _coloring == ColoringMode::eSegmentation )
+    {
+        // Render segmentation colors
+        const auto& segmentation_colors = segmentation->element_colors();
+        const auto dimensions = dataset->spatial_metadata()->dimensions;
+        const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+        painter.setOpacity( _segmentation_opacity );
+        painter.drawImage( _image_rectangle, image );
+        painter.setOpacity( 1.0 );
+    }
+    else if( _coloring == ColoringMode::eFalseColoring )
+    {
+        if( const auto colormap = _database.colormap_embedding() )
+        {
+            const auto& colors = colormap->colors();
+            const auto dimensions = dataset->spatial_metadata()->dimensions;
+            const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+            painter.setOpacity( _segmentation_opacity );
+            painter.drawImage( _image_rectangle, image );
+            painter.setOpacity( 1.0 );
+        }
+    }
 
     // Render overlay image
     if( _overlay_image.size() )
@@ -212,7 +227,11 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
         painter.drawRoundedRect( _sidebar_rectangle, 5.0, 5.0 );
 
-        const auto handle_color = _database.active_segment()->color().qcolor();
+        auto handle_color = QColor { 0, 0, 0, 255 };
+        if( _coloring == ColoringMode::eSegmentation )
+        {
+            handle_color = _database.active_segment()->color().qcolor();
+        }
 
         auto groove_rectangle = _sidebar_rectangle.marginsRemoved( QMarginsF { 8.0, 8.0, 8.0, 8.0 } );
         const auto handle_position = groove_rectangle.bottom() - _segmentation_opacity * groove_rectangle.height();
@@ -288,7 +307,27 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 _database.populate_segmentation_menu( context_menu );
                 context_menu.addSeparator();
 
-                context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
+                auto coloring_menu = context_menu.addMenu( "Coloring" );
+                auto coloring_action_group = new QActionGroup { coloring_menu };
+                coloring_action_group->setExclusive( true );
+
+                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
+                    { "Segmentation", ColoringMode::eSegmentation },
+                    { "False-coloring", ColoringMode::eFalseColoring },
+                };
+
+                for( const auto [label, coloring] : coloring_options )
+                {
+                    const auto action = coloring_menu->addAction( label, [this, coloring]
+                    {
+                        _coloring = coloring;
+                        this->update();
+                    } );
+
+                    action->setCheckable( true );
+                    action->setChecked( _coloring == coloring );
+                    coloring_action_group->addAction( action );
+                }
 
                 //auto overlay_menu = context_menu.addMenu( "Overlay" );
                 //overlay_menu->addAction( "Import", [this] { this->import_overlay(); } );
@@ -331,6 +370,8 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                     action->setChecked( _segmentation_opacity == opacity_value );
                     segmentation_opacity_action_group->addAction( action );
                 }
+
+                context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );
@@ -646,11 +687,26 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
             painter.drawImage( image.rect(), image );
         }
 
-        // Render segmentation colors
-        const auto& segmentation_colors = _database.segmentation()->element_colors();
-        const auto segmentation_image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-        painter.setOpacity( _segmentation_opacity );
-        painter.drawImage( image.rect(), segmentation_image );
+        // Render segmentation colors or false-coloring
+        if( _coloring == ColoringMode::eSegmentation )
+        {
+            // Render segmentation colors
+            const auto segmentation = _database.segmentation();
+            const auto& segmentation_colors = segmentation->element_colors();
+            const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+            painter.setOpacity( _segmentation_opacity );
+            painter.drawImage( image.rect(), image );
+        }
+        else if( _coloring == ColoringMode::eFalseColoring )
+        {
+            if( const auto colormap = _database.colormap_embedding() )
+            {
+                const auto& colors = colormap->colors();
+                const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+                painter.setOpacity( _segmentation_opacity );
+                painter.drawImage( image.rect(), image );
+            }
+        }
 
         if( filepath == "clipboard" )
         {

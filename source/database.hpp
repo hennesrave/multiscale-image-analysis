@@ -24,6 +24,8 @@ public:
     QSharedPointer<Embedding> embedding() const noexcept;
     void update_embedding( QSharedPointer<Embedding> embedding );
 
+    QSharedPointer<ColormapEmbedding> colormap_embedding() const noexcept;
+
     QSharedPointer<Segment> active_segment() const;
     void update_active_segment( QSharedPointer<Segment> segment );
 
@@ -47,6 +49,7 @@ private:
     QSharedPointer<Storage<Feature>> _features;
     QSharedPointer<Storage<Colormap>> _colormaps;
     QSharedPointer<Embedding> _embedding;
+    QSharedPointer<ColormapEmbedding> _colormap_embedding;
 
     mutable QWeakPointer<Segment> _active_segment;
 

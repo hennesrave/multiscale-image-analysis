@@ -11,6 +11,12 @@ class ImageViewer : public QWidget
 {
     Q_OBJECT
 public:
+    enum class ColoringMode
+    {
+        eSegmentation,
+        eFalseColoring,
+    };
+
     enum class InteractionMode
     {
         eNone,
@@ -44,6 +50,8 @@ private:
     void export_matrix() const;
 
     Database& _database;
+
+    ColoringMode _coloring = ColoringMode::eSegmentation;
     QWeakPointer<Colormap> _colormap;
     Tensor::with_rank<3>::with_type<uint8_t> _overlay_image;
 

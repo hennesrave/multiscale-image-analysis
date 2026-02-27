@@ -83,7 +83,8 @@ template<class T> struct vec2
     value_type x;
     value_type y;
 
-    vec2( value_type x = {}, value_type y = {} ) noexcept : x { x }, y { y } {}
+    vec2() noexcept : x {}, y {} {}
+    vec2( value_type x, value_type y ) noexcept : x { x }, y { y } {}
 
     template<class U> vec2<U> cast()
     {
@@ -197,7 +198,8 @@ template<class T> struct vec3
     value_type y;
     value_type z;
 
-    vec3( value_type x = {}, value_type y = {}, value_type z = {} ) noexcept : x { x }, y { y }, z { z } {}
+    vec3() noexcept : x {}, y {}, z {} {}
+    vec3( value_type x, value_type y, value_type z ) noexcept : x { x }, y { y }, z { z } {}
 
     template<class U> vec3<U> cast()
     {
@@ -325,7 +327,8 @@ template<class T> struct vec4
         struct { value_type r, g, b, a; };
     };
 
-    vec4( value_type x = {}, value_type y = {}, value_type z = {}, value_type w = {} ) noexcept : x { x }, y { y }, z { z }, w { w }
+    vec4() noexcept : x {}, y {}, z {}, w {} {}
+    vec4( value_type x, value_type y, value_type z, value_type w ) noexcept : x { x }, y { y }, z { z }, w { w }
     {
     }
 

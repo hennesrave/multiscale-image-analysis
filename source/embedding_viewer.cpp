@@ -372,9 +372,9 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
     this->setMouseTracking( true );
 
     const auto segmentation = _database.segmentation();
-    QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::segmentation_changed );
-    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::segmentation_changed );
-    this->segmentation_changed();
+    QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::update_coloring );
+    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::update_coloring );
+    this->update_coloring();
 
     QObject::connect( &_database, &Database::embedding_changed, this, [this] ()
     {
@@ -435,9 +435,22 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
             const auto position = coordinates[std::distance( indices.begin(), iterator )];
             const auto screen = this->world_to_screen( QPointF { position.x, position.y } );
 
-            const auto segment_number = _database.segmentation()->segment_number( *element_index );
-            const auto segment = _database.segmentation()->segment( segment_number );
-            const auto color = segment_number == 0 ? QColor { 230, 230, 230, 255 } : segment->color().qcolor();
+            auto color = QColor { 230, 230, 230, 255 };
+
+            if( _coloring == ColoringMode::eSegmentation )
+            {
+                const auto segment_number   = _database.segmentation()->segment_number( *element_index );
+                const auto segment          = _database.segmentation()->segment( segment_number );
+                color                       = segment_number == 0 ? QColor { 230, 230, 230, 255 } : segment->color().qcolor();
+            }
+            else if( _coloring == ColoringMode::eFalseColoring )
+            {
+                if( const auto colormap = _database.colormap_embedding() )
+                {
+                    const auto& colors = colormap->colors();
+                    color = colors[*element_index].qcolor();
+                }
+            }
 
             const auto radius = std::sqrt( _projection_matrix( 0, 0 ) ) * _point_size + 3.0;
 
@@ -539,6 +552,28 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                     action->setCheckable( true );
                     action->setChecked( _point_size == size );
                     point_size_action_group->addAction( action );
+                }
+
+                auto coloring_menu = context_menu.addMenu( "Coloring" );
+                auto coloring_action_group = new QActionGroup { coloring_menu };
+                coloring_action_group->setExclusive( true );
+
+                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
+                    { "Segmentation", ColoringMode::eSegmentation },
+                    { "False-coloring", ColoringMode::eFalseColoring },
+                };
+
+                for( const auto [label, coloring] : coloring_options )
+                {
+                    const auto action = coloring_menu->addAction( label, [this, coloring]
+                    {
+                        _coloring = coloring;
+                        this->update_coloring();
+                    } );
+
+                    action->setCheckable( true );
+                    action->setChecked( _coloring == coloring );
+                    coloring_action_group->addAction( action );
                 }
 
                 context_menu.addAction( "Reset View", [this] { this->reset_projection_matrix(); } );
@@ -674,17 +709,46 @@ QPointF EmbeddingViewer::screen_to_world( const QPointF& screen ) const
     return QPointF { this->screen_to_world_x( screen.x() ), this->screen_to_world_y( screen.y() ) };
 }
 
-void EmbeddingViewer::segmentation_changed()
+void EmbeddingViewer::update_coloring()
 {
-    const auto segmentation = _database.segmentation();
-    auto segment_colors = Array<vec4<float>>::allocate( segmentation->segment_count() );
-    segment_colors[0] = vec4<float> { 0.9f, 0.9f, 0.9f, 1.0f };
-    for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+    if( _coloring == ColoringMode::eSegmentation )
     {
-        segment_colors[segment_number] = segmentation->segment( segment_number )->color();
+        const auto segmentation = _database.segmentation();
+        auto segment_colors = Array<vec4<float>>::allocate( segmentation->segment_count() );
+        segment_colors[0] = vec4<float> { 0.9f, 0.9f, 0.9f, 1.0f };
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            segment_colors[segment_number] = segmentation->segment( segment_number )->color();
+        }
+
+        _renderer->update_segmentation( _database.segmentation()->segment_numbers(), std::move( segment_colors ) );
+    }
+    else if( _coloring == ColoringMode::eFalseColoring )
+    {
+        const auto embedding = _database.embedding();
+        const auto colormap = _database.colormap_embedding();
+
+        if( !embedding || !colormap )
+        {
+            return;
+        }
+
+        const auto& indices = embedding->indices();
+        const auto& colors = colormap->colors();
+
+        auto segment_numbers = Array<uint32_t>::allocate( indices.size() );
+        std::iota( segment_numbers.begin(), segment_numbers.end(), 0 );
+
+        auto segment_colors = Array<vec4<float>>::allocate( indices.size() );
+        for( uint32_t i = 0; i < colors.size(); ++i )
+        {
+            const auto color = colors[indices[i]];
+            segment_colors[i] = vec4<float> { color.x, color.y, color.z, 1.0f };
+        }
+
+        _renderer->update_segmentation( std::move( segment_numbers ), std::move( segment_colors ) );
     }
 
-    _renderer->update_segmentation( _database.segmentation()->segment_numbers(), segment_colors );
     _scatterplot_image_valid = false;
     this->update();
 }

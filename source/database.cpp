@@ -12,10 +12,13 @@ Database::Database( QSharedPointer<Dataset> dataset ) : _dataset { dataset }
     _segmentation = QSharedPointer<Segmentation>::create( _dataset->element_count() );
     _features = QSharedPointer<Storage<Feature>>::create();
     _colormaps = QSharedPointer<Storage<Colormap>>::create();
+    _colormap_embedding = QSharedPointer<ColormapEmbedding>::create( _dataset->element_count() );
 
     for( int i = 0; i < 5; ++i )
         _segmentation->append_segment();
     _active_segment = _segmentation->segment( 1 );
+
+    QObject::connect( this, &Database::embedding_changed, _colormap_embedding.get(), &ColormapEmbedding::update_embedding );
 }
 
 QSharedPointer<Dataset> Database::dataset() const noexcept
@@ -46,6 +49,11 @@ void Database::update_embedding( QSharedPointer<Embedding> embedding )
         _embedding = embedding;
         emit embedding_changed( _embedding );
     }
+}
+
+QSharedPointer<ColormapEmbedding> Database::colormap_embedding() const noexcept
+{
+    return _colormap_embedding;
 }
 
 QSharedPointer<Segment> Database::active_segment() const

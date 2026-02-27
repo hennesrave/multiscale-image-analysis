@@ -70,6 +70,12 @@ class EmbeddingViewer : public QWidget
 {
     Q_OBJECT
 public:
+    enum class ColoringMode
+    {
+        eSegmentation,
+        eFalseColoring,
+    };
+
     enum class InteractionMode
     {
         eNone,
@@ -125,12 +131,14 @@ public:
     QPointF screen_to_world( const QPointF& screen ) const;
 
 private:
-    void segmentation_changed();
+    void update_coloring();
     void reset_projection_matrix();
     void import_embedding( const std::filesystem::path& filepath );
     void create_screenshot( uint32_t scaling ) const;
 
     Database& _database;
+
+    ColoringMode _coloring = ColoringMode::eSegmentation;
 
     std::unique_ptr<EmbeddingRenderer> _renderer;
     bool _scatterplot_image_valid = false;
