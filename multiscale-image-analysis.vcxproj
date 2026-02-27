@@ -110,6 +110,7 @@
     <ClCompile Include="source\console.cpp" />
     <ClCompile Include="source\database.cpp" />
     <ClCompile Include="source\dataset.cpp" />
+    <ClCompile Include="source\dataset_alignment_dialog.cpp" />
     <ClCompile Include="source\dataset_exporter.cpp" />
     <ClCompile Include="source\dataset_importer.cpp" />
     <ClCompile Include="source\embedding.cpp" />
@@ -157,6 +158,7 @@
     <ClInclude Include="source\configuration.hpp" />
     <ClInclude Include="source\console.hpp" />
     <QtMoc Include="source\dataset_exporter.hpp" />
+    <QtMoc Include="source\dataset_alignment_dialog.hpp" />
     <ClInclude Include="source\dataset_importer.hpp" />
     <QtMoc Include="source\histogram.hpp" />
     <QtMoc Include="source\plotting_widget.hpp" />

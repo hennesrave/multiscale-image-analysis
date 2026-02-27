@@ -1,4 +1,5 @@
 ﻿#include "database.hpp"
+#include "dataset_alignment_dialog.hpp"
 #include "dataset_importer.hpp"
 #include "embedding_creator.hpp"
 #include "python.hpp"
@@ -63,12 +64,58 @@ int main( int argc, char** argv )
 
             if( _databases.size() )
             {
-                const auto& existing_dataset = _databases.front()->dataset();
-                if( dataset->element_count() != existing_dataset->element_count() )
+                const auto current_spatial_metadata = _databases.front()->dataset()->spatial_metadata();
+                const auto dataset_spatial_metadata = dataset->spatial_metadata();
+
+                auto buttons = QMessageBox::StandardButtons { QMessageBox::Yes };
+                auto message = QString {};
+
+                if( current_spatial_metadata->dimensions != dataset_spatial_metadata->dimensions )
                 {
-                    Console::error( "The new dataset has a different number of datapoints than the existing dataset(s)." );
-                    QMessageBox::critical( nullptr, "", "The new dataset has a different number of datapoints than the existing dataset(s)." );
+                    buttons |= QMessageBox::Cancel;
+                    message = QString { "The dataset you are trying to import has " } +
+                        QString::number( dataset_spatial_metadata->dimensions.x ) +
+                        "x" +
+                        QString::number( dataset_spatial_metadata->dimensions.y ) +
+                        " pixels, while the currently open dataset has " +
+                        QString::number( current_spatial_metadata->dimensions.x ) +
+                        "x" +
+                        QString::number( current_spatial_metadata->dimensions.y ) +
+                        " pixels.\n\n";
+                }
+                else
+                {
+                    buttons |= QMessageBox::No;
+                }
+
+                message += QString { "Do you want to align the new dataset to the currently open dataset?" };
+
+                const auto response = QMessageBox::question(
+                    nullptr,
+                    "Dataset Alignment...",
+                    message,
+                    buttons
+                );
+
+                if( response == QMessageBox::Cancel )
+                {
                     return;
+                }
+                else if( response == QMessageBox::Yes )
+                {
+                    auto dataset_alignment_dialog = DatasetAlignmentDialog { dataset, _databases.front()->dataset() };
+                    dataset_alignment_dialog.resize( 1600, 900 );
+
+                    if( dataset_alignment_dialog.exec() == QDialog::Rejected )
+                    {
+                        return;
+                    }
+
+                    if( dataset = dataset_alignment_dialog.aligned(); !dataset )
+                    {
+                        QMessageBox::critical( nullptr, "Dataset Alignment...", "Failed to align dataset.", QMessageBox::Ok );
+                        return;
+                    }
                 }
 
                 segmentation = _databases.front()->segmentation();
@@ -85,6 +132,20 @@ int main( int argc, char** argv )
                 if( const auto dataset = DatasetImporter::execute_dialog() )
                 {
                     this->import_dataset( dataset );
+                }
+            } );
+            QObject::connect( workspace.get(), &QObject::destroyed, [&, workspace = workspace.get()]
+            {
+                for( size_t i = 0; i < _workspaces.size(); ++i )
+                {
+                    if( _workspaces[i].get() == workspace )
+                    {
+                        _workspaces[i]->deleteLater();
+                        _workspaces[i].release();
+                        _workspaces.erase( _workspaces.begin() + i );
+                        _databases.erase( _databases.begin() + i );
+                        break;
+                    }
                 }
             } );
 
