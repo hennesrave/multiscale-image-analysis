@@ -753,11 +753,12 @@ Array<vec4<float>> ColormapEmbedding::compute_colors() const
     {
         maximum_resolution *= 2;
     }
+    maximum_resolution = std::min( maximum_resolution, int32_t { 1024 } );
 
     auto density  = std::vector<float>( maximum_resolution * maximum_resolution );
     auto vertices = std::vector<vec2<float>>( ( maximum_resolution + 1 ) * ( maximum_resolution + 1 ) );
 
-    for( auto cycle_index = 0; cycle_index < 0; ++cycle_index )
+    for( auto cycle_index = 0; cycle_index < 20; ++cycle_index )
     {
         for( auto resolution = maximum_resolution; resolution >= 2; resolution /= 2 )
         {
