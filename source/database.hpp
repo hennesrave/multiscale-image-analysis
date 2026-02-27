@@ -14,7 +14,7 @@ class Database : public QObject
 {
     Q_OBJECT
 public:
-    explicit Database( QSharedPointer<Dataset> dataset );
+    explicit Database( QSharedPointer<Dataset> dataset, QSharedPointer<Segmentation> segmentation );
 
     QSharedPointer<Dataset> dataset() const noexcept;
     QSharedPointer<Segmentation> segmentation() const noexcept;
@@ -38,6 +38,7 @@ public:
     void populate_segmentation_menu( QMenu& context_menu, bool enable_propogate = false );
 
 signals:
+    void request_additional_dataset_import() const;
     void embedding_changed( QSharedPointer<Embedding> embedding ) const;
     void active_segment_changed( QSharedPointer<Segment> segment ) const;
     void highlighted_element_index_changed( std::optional<uint32_t> index ) const;

@@ -7,9 +7,13 @@
 #include <qfiledialog.h>
 #include <qmessagebox.h>
 
-Database::Database( QSharedPointer<Dataset> dataset ) : _dataset { dataset }
+Database::Database( QSharedPointer<Dataset> dataset, QSharedPointer<Segmentation> segmentation ) : _dataset { dataset }, _segmentation { segmentation }
 {
-    _segmentation = QSharedPointer<Segmentation>::create( _dataset->element_count() );
+    if( !_segmentation )
+    {
+        _segmentation = QSharedPointer<Segmentation>::create( _dataset->element_count() );
+    }
+
     _features = QSharedPointer<Storage<Feature>>::create();
     _colormaps = QSharedPointer<Storage<Colormap>>::create();
     _colormap_embedding = QSharedPointer<ColormapEmbedding>::create( _dataset->element_count() );

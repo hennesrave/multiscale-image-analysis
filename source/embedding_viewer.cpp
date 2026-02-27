@@ -613,7 +613,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 context_menu.addSeparator();
                 context_menu.addAction( "Create Embedding", [this]
                 {
-                    auto embedding_creator = EmbeddingCreator { _database };
+                    auto embedding_creator = EmbeddingCreator {};
                     if( embedding_creator.exec() == QDialog::Accepted )
                     {
                         this->import_embedding( embedding_creator.filepath() );

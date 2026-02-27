@@ -21,6 +21,19 @@ Dataset::Dataset()
     emit _computed_channel_identifiers.changed();
 }
 
+QString Dataset::identifier() const noexcept
+{
+    return _identifier;
+}
+void Dataset::update_identifier( const QString& identifier )
+{
+    if( _identifier != identifier )
+    {
+        _identifier = identifier;
+        emit identifier_changed( _identifier );
+    }
+}
+
 void Dataset::update_channel_identifiers( Array<QString> channel_identifiers )
 {
     _override_channel_identifiers = std::move( channel_identifiers );

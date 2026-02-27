@@ -538,6 +538,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         } );
 
         dataset_menu->addAction( "Export", [this] { DatasetExporter::execute_dialog( _database, _database.dataset() ); } );
+        dataset_menu->addAction( "Import Modality", &_database, &Database::request_additional_dataset_import );
 
         menu.exec( event->globalPosition().toPoint() );
 

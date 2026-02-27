@@ -1,11 +1,12 @@
 ﻿#include "database.hpp"
 #include "dataset_importer.hpp"
+#include "embedding_creator.hpp"
 #include "python.hpp"
 #include "workspace.hpp"
 #include "utility.hpp"
 
 #include <qapplication.h>
-#include <qscreen.h>
+#include <qmessagebox.h>
 #include <qsurfaceformat.h>
 #include <qwidget.h>
 
@@ -53,15 +54,57 @@ int main( int argc, char** argv )
         return 0;
     }
 
+    class Project
+    {
+    public:
+        void import_dataset( QSharedPointer<Dataset> dataset )
+        {
+            auto segmentation = QSharedPointer<Segmentation> {};
+
+            if( _databases.size() )
+            {
+                const auto& existing_dataset = _databases.front()->dataset();
+                if( dataset->element_count() != existing_dataset->element_count() )
+                {
+                    Console::error( "The new dataset has a different number of datapoints than the existing dataset(s)." );
+                    QMessageBox::critical( nullptr, "", "The new dataset has a different number of datapoints than the existing dataset(s)." );
+                    return;
+                }
+
+                segmentation = _databases.front()->segmentation();
+            }
+
+            _databases.emplace_back( new Database { dataset, segmentation } );
+            auto& database = _databases.back();
+
+            _workspaces.emplace_back( new Workspace { *database } );
+            auto& workspace = _workspaces.back();
+
+            QObject::connect( database.get(), &Database::request_additional_dataset_import, [&]
+            {
+                if( const auto dataset = DatasetImporter::execute_dialog() )
+                {
+                    this->import_dataset( dataset );
+                }
+            } );
+
+            workspace->setWindowTitle( QString { config::application_display_name } + " - v" + config::application_version_string );
+            workspace->resize( 1600, 900 );
+            workspace->showMaximized();
+        }
+
+        std::vector<std::unique_ptr<Database>> _databases;
+        std::vector<std::unique_ptr<Workspace>> _workspaces;
+    };
+
     // Initialize workspace
     if( const auto dataset = DatasetImporter::execute_dialog() )
     {
-        auto database = Database { dataset };
-        auto workspace = Workspace { database };
-        workspace.setWindowTitle( QString { config::application_display_name } + " - v" + config::application_version_string );
-        workspace.resize( 1600, 900 );
-        workspace.showMaximized();
+        auto project = Project {};
 
+        EmbeddingCreator::database_registry = &project._databases;
+
+        project.import_dataset( dataset );
         return application.exec();
     }
 

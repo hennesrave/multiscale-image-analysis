@@ -716,7 +716,7 @@ void ColormapEmbedding::update_embedding( QSharedPointer<Embedding> embedding )
     }
 }
 
-uint32_t ColormapEmbedding::cycle_count() const
+uint32_t ColormapEmbedding::cycle_count() const noexcept
 {
     return _cycle_count;
 }
@@ -772,7 +772,7 @@ Array<vec4<float>> ColormapEmbedding::compute_colors() const
     auto density  = std::vector<float>( maximum_resolution * maximum_resolution );
     auto vertices = std::vector<vec2<float>>( ( maximum_resolution + 1 ) * ( maximum_resolution + 1 ) );
 
-    for( auto cycle_index = 0; cycle_index < _cycle_count; ++cycle_index )
+    for( uint32_t cycle_index = 0; cycle_index < _cycle_count; ++cycle_index )
     {
         Console::info( std::format( "Computing false-coloring... cycle = {}", cycle_index + 1 ) );
 

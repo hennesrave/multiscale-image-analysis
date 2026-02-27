@@ -403,10 +403,11 @@ try:
         import igraph
         import umap
 
-        if leiden_model is None or not isinstance( leiden_model, umap.UMAP ):
+        if leiden_model is None or not isinstance( leiden_model[0], umap.UMAP ):
             raise ValueError( "Leiden algorithm requires a UMAP embedding" )
 
-        model_element_indices = np.asarray( embedding_indices, copy=False )
+        leiden_model, model_datapoint_indices = leiden_model
+        model_datapoint_indices = np.intersect1d( element_indices, model_datapoint_indices, assume_unique=True )
 
         print( f"[Segmentation] Building graph... " )
         coo_graph   = leiden_model.graph_.tocoo()
@@ -428,7 +429,7 @@ try:
         )
 
         labels = np.array( partition.membership, dtype=np.uint32 ) + 1
-        segment_numbers[model_element_indices] = labels
+        segment_numbers[model_datapoint_indices] = labels
 
     else:
         raise ValueError( f"Unknown segmentation algorithm: {algorithm}" )

@@ -16,9 +16,13 @@
 #include <qstackedwidget.h>
 #include <qtoolbutton.h>
 
-std::filesystem::path EmbeddingCreator::execute( const Database& database )
+// ----- EmbeddingCreator ----- //
+
+std::vector<std::unique_ptr<Database>>* EmbeddingCreator::database_registry = nullptr;
+
+std::filesystem::path EmbeddingCreator::execute()
 {
-    auto embedding_creator = EmbeddingCreator { database };
+    auto embedding_creator = EmbeddingCreator {};
     if( embedding_creator.exec() == QDialog::Accepted )
     {
         return embedding_creator.filepath();
@@ -26,39 +30,15 @@ std::filesystem::path EmbeddingCreator::execute( const Database& database )
     return std::filesystem::path {};
 }
 
-EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _database { database }
+EmbeddingCreator::EmbeddingCreator() : QDialog {}
 {
-    const auto dataset = _database.dataset();
-    const auto segmentation = _database.segmentation();
-    const auto features = _database.features();
+    const auto segmentation = EmbeddingCreator::database_registry->front()->segmentation();
 
     this->setWindowTitle( "Create Embedding..." );
     this->setStyleSheet( "QPushButton { padding: 2px 5px 2px 5px; }" );
 
     // Initialize general properties
     auto segment_selector = new SegmentSelector { segmentation };
-
-    auto channels = new QListWidget {};
-    channels->setSelectionMode( QAbstractItemView::MultiSelection );
-    for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
-        channels->addItem( "Channel " + dataset->channel_identifier( channel_index ) );
-    channels->selectAll();
-
-    auto channels_select_all = new QPushButton { "Select All" };
-    auto channels_deselect_all = new QPushButton { "Deselect All" };
-    auto channels_select_from_features = new QPushButton { "Select from Features" };
-
-    auto channels_select_layout = new QHBoxLayout {};
-    channels_select_layout->setContentsMargins( 0, 0, 0, 0 );
-    channels_select_layout->setSpacing( 5 );
-    channels_select_layout->addWidget( channels_select_all );
-    channels_select_layout->addWidget( channels_deselect_all );
-    channels_select_layout->addWidget( channels_select_from_features );
-
-    auto features_list = new QListWidget {};
-    features_list->setSelectionMode( QAbstractItemView::MultiSelection );
-    for( qsizetype feature_index = 0; feature_index < features->object_count(); ++feature_index )
-        features_list->addItem( features->object( feature_index )->identifier() );
 
     auto normalization = new QComboBox {};
     normalization->addItem( "Z-score" );
@@ -108,7 +88,7 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
 
     // Initialize UMAP properties
     auto umap_neighbors = new QSpinBox {};
-    umap_neighbors->setRange( 2, static_cast<int>( dataset->element_count() - 1 ) );
+    umap_neighbors->setRange( 2, static_cast<int>( segmentation->element_count() - 1 ) );
     umap_neighbors->setValue( 15 );
 
     auto umap_minimum_distance = new QDoubleSpinBox {};
@@ -165,9 +145,100 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     auto layout = new QFormLayout { this };
 
     layout->addRow( "Filter", segment_selector );
-    layout->addRow( "Channel Filter", channels );
-    layout->addRow( "", channels_select_layout );
-    layout->addRow( "Additional Features", features_list );
+
+    struct DatasetWidgets
+    {
+        QListWidget* channels_list;
+        QListWidget* features_list;
+    };
+
+    auto dataset_selector   = new QComboBox {};
+    auto dataset_properties = new QStackedWidget {};
+    auto dataset_widgets    = std::vector<DatasetWidgets> {};
+
+    for( size_t database_index = 0; database_index < EmbeddingCreator::database_registry->size(); ++database_index )
+    {
+        const auto& database    = EmbeddingCreator::database_registry->at( database_index );
+        const auto dataset      = database->dataset();
+        const auto features     = database->features();
+
+        auto channels_list = new QListWidget {};
+        channels_list->setSelectionMode( QAbstractItemView::MultiSelection );
+        for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
+            channels_list->addItem( "Channel " + dataset->channel_identifier( channel_index ) );
+
+        if( database.get() == EmbeddingCreator::database_registry->front().get() )
+        {
+            channels_list->selectAll();
+        }
+
+        auto channels_select_all = new QPushButton { "Select All" };
+        auto channels_deselect_all = new QPushButton { "Deselect All" };
+        auto channels_select_from_features = new QPushButton { "Select from Features" };
+
+        auto channels_select_layout = new QHBoxLayout {};
+        channels_select_layout->setContentsMargins( 0, 0, 0, 0 );
+        channels_select_layout->setSpacing( 5 );
+        channels_select_layout->addWidget( channels_select_all );
+        channels_select_layout->addWidget( channels_deselect_all );
+        channels_select_layout->addWidget( channels_select_from_features );
+
+        auto features_list = new QListWidget {};
+        features_list->setSelectionMode( QAbstractItemView::MultiSelection );
+        for( qsizetype feature_index = 0; feature_index < features->object_count(); ++feature_index )
+            features_list->addItem( features->object( feature_index )->identifier() );
+
+        // Initialize outside widgets
+
+        dataset_selector->addItem( "[" + QString::number( database_index + 1 ) + "] " + dataset->identifier() );
+
+        if( EmbeddingCreator::database_registry->size() == 1 )
+        {
+            layout->addRow( "Channels", channels_list );
+            layout->addRow( "", channels_select_layout );
+            layout->addRow( "Features", features_list );
+
+            dataset_widgets.push_back( { channels_list, features_list } );
+        }
+        else
+        {
+            auto layout = new QFormLayout {};
+            layout->setContentsMargins( 0, 0, 0, 0 );
+            layout->addRow( "Channels", channels_list );
+            layout->addRow( "", channels_select_layout );
+            layout->addRow( "Features", features_list );
+
+            auto container = new QWidget {};
+            container->setLayout( layout );
+            dataset_properties->addWidget( container );
+            dataset_widgets.push_back( { channels_list, features_list } );
+        }
+
+        QObject::connect( channels_select_all, &QPushButton::clicked, channels_list, &QListWidget::selectAll );
+        QObject::connect( channels_deselect_all, &QPushButton::clicked, channels_list, &QListWidget::clearSelection );
+        QObject::connect( channels_select_from_features, &QPushButton::clicked, [&database, channels_list]
+        {
+            channels_list->clearSelection();
+            for( const auto object : *database->features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
+            {
+                const auto channel_range = feature->channel_range();
+                for( uint32_t channel_index = channel_range.x; channel_index <= channel_range.y; ++channel_index )
+                {
+                    if( auto item = channels_list->item( static_cast<int>( channel_index ) ) )
+                    {
+                        item->setSelected( true );
+                    }
+                }
+            }
+        } );
+    }
+
+    if( EmbeddingCreator::database_registry->size() > 1 )
+    {
+        layout->addRow( "", dataset_selector );
+        layout->addRow( dataset_properties );
+    }
+
     layout->addRow( "Normalization", normalization );
     layout->addRow( "Features Contribution", features_contribution );
     layout->addRow( "Filepath", filepath_layout );
@@ -177,23 +248,6 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
     layout->addRow( button_create );
 
     QObject::connect( algorithm, &QComboBox::currentIndexChanged, algorithm_properties, &QStackedWidget::setCurrentIndex );
-    QObject::connect( channels_select_all, &QPushButton::clicked, channels, &QListWidget::selectAll );
-    QObject::connect( channels_deselect_all, &QPushButton::clicked, channels, &QListWidget::clearSelection );
-    QObject::connect( channels_select_from_features, &QPushButton::clicked, [this, channels]
-    {
-        channels->clearSelection();
-        for( const auto object : *_database.features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
-        {
-            const auto channel_range = feature->channel_range();
-            for( uint32_t channel_index = channel_range.x; channel_index <= channel_range.y; ++channel_index )
-            {
-                if( auto item = channels->item( static_cast<int>( channel_index ) ) )
-                {
-                    item->setSelected( true );
-                }
-            }
-        }
-    } );
     QObject::connect( normalization, &QComboBox::currentTextChanged, [features_contribution, normalization]
     {
         features_contribution->setEnabled( normalization->currentText() != "None" );
@@ -225,28 +279,9 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
             return;
         }
 
-        auto interpreter        = py::interpreter {};
-        const auto dataset      = _database.dataset();
-        const auto segmentation = _database.segmentation();
-        const auto features     = _database.features();
+        auto interpreter = py::interpreter {};
 
-        auto dataset_memoryview = std::optional<py::memoryview> {};
-        dataset->visit( [&dataset_memoryview] ( const auto& dataset )
-        {
-            using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
-            dataset_memoryview = py::memoryview::from_buffer(
-                dataset.intensities().data(),
-                { dataset.element_count(), dataset.channel_count() },
-                { dataset.channel_count() * sizeof( value_type ), sizeof( value_type ) }
-            );
-        } );
-        if( !dataset_memoryview.has_value() )
-        {
-            QMessageBox::critical( nullptr, "Create Embedding...", "Cannot create an embedding for this dataset" );
-            this->reject();
-            return;
-        }
-
+        // Segmentation
         const auto segmentation_memoryview = py::memoryview::from_buffer(
             segmentation->segment_numbers().data(),
             { segmentation->element_count() },
@@ -254,31 +289,71 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         );
 
         const auto selected_segment = segment_selector->selected_segment();
-        const auto segment_number = selected_segment ? static_cast<int32_t>( selected_segment->number() ) : -1;
+        const auto segment_number   = selected_segment ? static_cast<int32_t>( selected_segment->number() ) : -1;
 
-        auto channel_indices = std::vector<size_t> {};
-        for( const auto item : channels->selectedItems() )
-            channel_indices.push_back( channels->row( item ) );
+        // Datasets
+        auto datasets_memoryviews = std::vector<py::memoryview> {};
+        auto datasets_channels_indices = std::vector<std::vector<uint32_t>> {};
+        auto datasets_features_memoryviews = std::vector<std::vector<py::memoryview>> {};
 
-        auto additional_features = std::vector<py::memoryview> {};
-        for( const auto item : features_list->selectedItems() )
+        for( size_t database_index = 0; database_index < EmbeddingCreator::database_registry->size(); ++database_index )
         {
-            const auto feature_index = features_list->row( item );
-            const auto feature = features->object( feature_index );
-            additional_features.push_back( py::memoryview::from_buffer(
-                feature->values().data(),
-                { feature->element_count() },
-                { sizeof( double ) }
-            ) );
+            const auto& database    = EmbeddingCreator::database_registry->at( database_index );
+            const auto dataset      = database->dataset();
+            const auto features     = database->features();
+
+            const auto& widgets         = dataset_widgets[database_index];
+            const auto channels_list    = widgets.channels_list;
+            const auto features_list    = widgets.features_list;
+
+            auto dataset_memoryview = std::optional<py::memoryview> {};
+            dataset->visit( [&dataset_memoryview] ( const auto& dataset )
+            {
+                using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
+                dataset_memoryview = py::memoryview::from_buffer(
+                    dataset.intensities().data(),
+                    { dataset.element_count(), dataset.channel_count() },
+                    { dataset.channel_count() * sizeof( value_type ), sizeof( value_type ) }
+                );
+            } );
+            if( !channels_list->selectedItems().isEmpty() && !dataset_memoryview.has_value() )
+            {
+                Console::error( std::format( "Cannot create an embedding for dataset {}: '{}'", database_index, dataset->identifier().toStdString() ) );
+                QMessageBox::critical( nullptr, "Create Embedding...", "Cannot create an embedding for this dataset" );
+                this->reject();
+                return;
+            }
+
+            auto channels_indices = std::vector<uint32_t> {};
+            for( const auto item : channels_list->selectedItems() )
+                channels_indices.push_back( channels_list->row( item ) );
+
+            auto features_memoryviews = std::vector<py::memoryview> {};
+            for( const auto item : features_list->selectedItems() )
+            {
+                const auto feature_index = features_list->row( item );
+                const auto feature = features->object( feature_index );
+                features_memoryviews.push_back( py::memoryview::from_buffer(
+                    feature->values().data(),
+                    { feature->element_count() },
+                    { sizeof( double ) }
+                ) );
+            }
+
+            datasets_memoryviews.push_back( *dataset_memoryview );
+            datasets_channels_indices.push_back( std::move( channels_indices ) );
+            datasets_features_memoryviews.push_back( features_memoryviews );
         }
 
         using namespace py::literals;
         auto locals = py::dict {
-            "dataset"_a = dataset_memoryview,
             "segmentation"_a = segmentation_memoryview,
             "segment_number"_a = segment_number,
-            "channel_indices"_a = channel_indices,
-            "additional_features"_a = additional_features,
+
+            "datasets"_a = datasets_memoryviews,
+            "datasets_channels"_a = datasets_channels_indices,
+            "datasets_features"_a = datasets_features_memoryviews,
+
             "features_contribution"_a = features_contribution->value(),
             "normalization"_a = normalization->currentText().toStdString(),
             "filepath"_a = filepath_label->text().toStdString(),
@@ -303,57 +378,94 @@ EmbeddingCreator::EmbeddingCreator( const Database& database ) : QDialog {}, _da
         {
             py::exec( R"(
 try:
-    import csv
     import numpy as np
 
-    dataset         = np.asarray( dataset, copy=False )
-    segmentation    = np.asarray( segmentation, copy=False )
-
-    print( f"[Embedding] Dataset: ({dataset.shape}, {dataset.dtype}) " )
+    segmentation        = np.asarray( segmentation, copy=False )
     print( f"[Embedding] Segmentation: ({segmentation.shape}, {segmentation.dtype}), segment number: {segment_number} " )
 
-    element_indices     = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
-    channel_indices     = np.array( channel_indices, dtype=np.int64 )
+    datapoint_indices   = ( np.argwhere( segmentation == segment_number ) if segment_number >= 0 else np.arange( segmentation.shape[0] ) ).astype( np.uint32 ).flatten()
+    datapoint_count     = datapoint_indices.shape[0]    
+    print( f"[Embedding] Datapoint indices: ({datapoint_indices.shape}, {datapoint_indices.dtype}) " )
 
-    element_count       = element_indices.shape[0]
-    channel_count       = channel_indices.shape[0]
-    feature_count       = len( additional_features )
-    dimension_count     = channel_count + feature_count
-    print( f"[Embedding] Element count: {element_count}, Channel count: {channel_count}, Feature count: {feature_count} " )
+    if datapoint_count == 0:
+        raise ValueError( "Datapoint count cannot be zero" )
 
-    if element_count == 0 or dimension_count == 0:
-        raise ValueError( "Filtered dataset cannot be empty" )
+    channel_count_total = 0
+    feature_count_total = 0
 
-    filtered_dataset        = np.zeros( ( element_count, dimension_count ), dtype=np.float32 )
+    for dataset_index in range( len( datasets ) ):
+        dataset     = np.asarray( datasets[dataset_index], copy=False )
+        channels    = np.asarray( datasets_channels[dataset_index], copy=True )
+        features    = datasets_features[dataset_index]
 
-    # === Copy data in channel-wise for lower memory consumption ==== #
-    for i, channel_index in enumerate( channel_indices ):
-        filtered_dataset[:, i] = dataset[element_indices, channel_index]
+        datasets[dataset_index]             = dataset
+        datasets_channels[dataset_index]    = channels
+        for feature_index in range( len( features ) ):
+            features[feature_index] = np.asarray( features[feature_index], copy=False )
 
-    # === Copy additional features === #
-    for i, feature in enumerate( additional_features ):
-        filtered_dataset[:, channel_count + i] = np.asarray( feature, copy=False )[element_indices]
+        channel_count_total += channels.size
+        feature_count_total += len( features )
+
+        print( f"[Embedding] Dataset {dataset_index}: ({dataset.shape}, {dataset.dtype}), channels: {channels.shape}, features: {len( features )} " )
+
+    dimension_count = channel_count_total + feature_count_total
+    print( f"[Embedding] Total channel count: {channel_count_total}, total feature count: {feature_count_total}, dimension count: {dimension_count} " )
+
+    if dimension_count == 0:
+        raise ValueError( "Dimension count cannot be zero" )
+
+    # === Create a combined dataset === #
+    combined_dataset = np.zeros( ( datapoint_count, dimension_count ), dtype=np.float32 )
+    print( f"[Embedding] Combined dataset: ({combined_dataset.shape}, {combined_dataset.dtype}) " )
+
+    current_channel_index = 0
+    current_feature_index = channel_count_total
+
+    for dataset_index in range( len( datasets ) ):
+        dataset     = datasets[dataset_index]
+        channels    = datasets_channels[dataset_index]
+        features    = datasets_features[dataset_index]
+
+        for i, channel_index in enumerate( channels ):
+            combined_dataset[:, current_channel_index + i] = dataset[datapoint_indices, channel_index]
+        current_channel_index += channels.size
+
+        for i, feature in enumerate( features ):
+            combined_dataset[:, current_feature_index + i] = feature[datapoint_indices]
+        current_feature_index += len( features )
     
-    print( f"[Embedding] Filtered dataset:  ({filtered_dataset.shape}, {filtered_dataset.dtype}) " )
-    
-    # === Adjust features weight based on the number of channels and features === #
-    features_weight = 1.0
-    if channel_count > 0 and feature_count > 0:
-        features_weight = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count / feature_count )
-
+    # === Normalize dataset ==== #
     if normalization != "None":
-        print( f"[Embedding] Normalizing dataset... " )
-        
-        # === Normalize the channels together and each feature individually === #
-        groups = [slice( 0, channel_count )]
-        for feature_index in range( feature_count ):
-            dimension_index = channel_count + feature_index
-            groups.append( slice( dimension_index, dimension_index + 1 ) )
-          
-        for group_index, group_slice in enumerate( groups ):
-            group_dataview = filtered_dataset[:, group_slice]
+        print( f"[Embedding] Normalizing dataset with method: {normalization} " )
+ 
+        # Adjust features weight based on the number of channels and features
+        features_weight = 1.0
+        if channel_count_total > 0 and feature_count_total > 0:
+            features_weight = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count_total / feature_count_total )
 
-            # === Use in-place operations to reduce memory consumption === #
+        print( f"[Embedding] Features weight: {features_weight:.4f} " )
+
+        normalization_groups = []
+
+        current_channel_index = 0
+        current_feature_index = channel_count_total
+
+        for dataset_index in range( len( datasets ) ):
+            channels    = datasets_channels[dataset_index]
+            features    = datasets_features[dataset_index]
+
+            normalization_groups.append( (slice( current_channel_index, current_channel_index + channels.size ), False) )
+            current_channel_index += channels.size
+
+            for i in range( len( features ) ):
+                normalization_groups.append( (slice( current_feature_index, current_feature_index + 1 ), True) )
+                current_feature_index += 1
+
+        for group_slice, is_feature in normalization_groups:
+            print( f"[Embedding] Normalizing group: {group_slice}, is_feature: {is_feature} " )
+
+            group_dataview = combined_dataset[:, group_slice]
+
             if normalization == "Z-Score":
                 group_mean        = np.mean( group_dataview )
                 group_std         = np.std( group_dataview )
@@ -367,11 +479,12 @@ try:
                 np.subtract( group_dataview, group_minimum, out=group_dataview )
                 np.divide( group_dataview, group_range, out=group_dataview )
             
-            if group_index > 0:
-                # === Scale features to have the same weight as channels === #
+            if is_feature:
                 np.multiply( group_dataview, features_weight, out=group_dataview )
     
-    model_element_indices = element_indices.copy()
+    # === Train model and compute embedding ==== #
+    model                   = None
+    model_datapoint_indices = datapoint_indices.copy()
 
     if algorithm == "PCA":
         from sklearn.decomposition import PCA
@@ -379,7 +492,7 @@ try:
             n_components    = 2,
             random_state    = pca_random_state
         )
-        embedding = model.fit_transform( filtered_dataset ).astype( np.float32 )
+        embedding = model.fit_transform( combined_dataset ).astype( np.float32 )
         print( f"[Embedding] Explained variance: {model.explained_variance_ratio_} (total: {np.sum(model.explained_variance_ratio_):.3f}) " )
 
     elif algorithm == "UMAP":
@@ -395,17 +508,17 @@ try:
         )
         
         if umap_subsampling == 1.0:
-            embedding               = model.fit_transform( filtered_dataset ).astype( np.float32 )
+            embedding               = model.fit_transform( combined_dataset ).astype( np.float32 )
         else:
             np.random.seed( 42 )
-            subsampling_filter      = np.random.choice( (True, False), filtered_dataset.shape[0], p=(umap_subsampling, 1.0 - umap_subsampling) )
-            subsampling_dataset     = filtered_dataset[subsampling_filter, :]
+            subsampling_filter      = np.random.choice( (True, False), combined_dataset.shape[0], p=(umap_subsampling, 1.0 - umap_subsampling) )
+            subsampling_dataset     = combined_dataset[subsampling_filter, :]
             print( f"[Embedding] Subsampling dataset: {subsampling_dataset.shape}" )
-
-            model_element_indices = model_element_indices[subsampling_filter]
-
+            
+            model_datapoint_indices = model_datapoint_indices[subsampling_filter]
+            
             model.fit( subsampling_dataset )
-            embedding = model.transform( filtered_dataset ).astype( np.float32 )
+            embedding = model.transform( combined_dataset ).astype( np.float32 )
 
     elif algorithm == "t-SNE":
         from sklearn.manifold import TSNE
@@ -415,14 +528,16 @@ try:
             verbose         = 2
         )
                             
-        embedding = model.fit_transform( filtered_dataset ).astype( np.float32 )
+        embedding = model.fit_transform( combined_dataset ).astype( np.float32 )
                         
     else:
         raise ValueError( f"Unknown embedding algorithm: {algorithm}" )
-                        
+
     print( f"[Embedding] Finished computing embedding: {embedding.shape}" )
     embedding = embedding - np.mean( embedding, axis=0 )
     embedding = embedding / np.max( np.abs( embedding ) )
+    
+    model = (model, model_datapoint_indices)
 
 except Exception as exception:
     error = str( exception ))", py::globals(), locals );
@@ -446,12 +561,12 @@ except Exception as exception:
                     return;
                 }
 
-                const auto element_indices = locals["element_indices"].cast<py::array_t<uint32_t>>();
+                const auto datapoint_indices = locals["datapoint_indices"].cast<py::array_t<uint32_t>>();
                 const auto embedding = locals["embedding"].cast<py::array_t<float>>();
 
-                for( py::ssize_t i = 0; i < element_indices.size(); ++i )
+                for( py::ssize_t i = 0; i < datapoint_indices.size(); ++i )
                 {
-                    stream << element_indices.at( i ) << ',' << embedding.at( i, 0 ) << ',' << embedding.at( i, 1 ) << '\n';
+                    stream << datapoint_indices.at( i ) << ',' << embedding.at( i, 0 ) << ',' << embedding.at( i, 1 ) << '\n';
                 }
             }
             else if( extension == ".mia" )
@@ -464,13 +579,13 @@ except Exception as exception:
                     return;
                 }
 
-                const auto element_indices  = locals["element_indices"].cast<py::array_t<uint32_t>>();
-                const auto embedding        = locals["embedding"].cast<py::array_t<float>>();
-                const auto model            = locals["model"].cast<py::object>();
+                const auto datapoint_indices    = locals["datapoint_indices"].cast<py::array_t<uint32_t>>();
+                const auto embedding            = locals["embedding"].cast<py::array_t<float>>();
+                const auto model                = locals["model"].cast<py::object>();
 
                 stream.write( std::string { "Embedding" } );
-                stream.write( static_cast<uint32_t>( element_indices.size() ) );
-                stream.write( element_indices.data(), element_indices.nbytes() );
+                stream.write( static_cast<uint32_t>( datapoint_indices.size() ) );
+                stream.write( datapoint_indices.data(), datapoint_indices.nbytes() );
                 stream.write( embedding.data(), embedding.nbytes() );
 
                 if( export_model->currentText() == "Yes" )

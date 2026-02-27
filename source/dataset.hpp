@@ -54,6 +54,9 @@ public:
 
     Dataset();
 
+    QString identifier() const noexcept;
+    void update_identifier( const QString& identifier );
+
     void update_channel_identifiers( Array<QString> channel_identifiers );
     void update_spatial_metadata( std::unique_ptr<SpatialMetadata> spatial_metadata );
 
@@ -78,6 +81,7 @@ public:
     const Array<Statistics>& segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const;
 
 signals:
+    void identifier_changed( const QString& ) const;
     void intensities_changed() const;
     void spatial_metadata_changed() const;
     void channel_identifiers_changed() const;
@@ -89,6 +93,8 @@ protected:
     virtual Array<QString> compute_channel_identifiers() const;
     virtual Statistics compute_statistics() const = 0;
     virtual Array<Statistics> compute_segmentation_statistics( QSharedPointer<const Segmentation> segmentation ) const = 0;
+
+    QString _identifier { "Dataset" };
 
     Computed<Array<QString>> _computed_channel_identifiers;
     Override<int> _channel_identifier_precision { 2, std::nullopt };
