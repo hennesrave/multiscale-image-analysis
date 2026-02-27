@@ -687,6 +687,7 @@ Array<vec4<float>> ColormapRGB::compute_colors() const
 ColormapEmbedding::ColormapEmbedding( uint32_t element_count ) : _element_count { element_count }
 {
     QObject::connect( this, &ColormapEmbedding::embedding_changed, &_colors, &ComputedObject::invalidate );
+    QObject::connect( this, &ColormapEmbedding::cycle_count_changed, &_colors, &ComputedObject::invalidate );
 }
 
 uint32_t ColormapEmbedding::element_count() const
@@ -712,6 +713,19 @@ void ColormapEmbedding::update_embedding( QSharedPointer<Embedding> embedding )
             QObject::connect( embedding.get(), &QObject::destroyed, this, [this] { emit embedding_changed( nullptr ); } );
         }
         emit embedding_changed( _embedding.lock() );
+    }
+}
+
+uint32_t ColormapEmbedding::cycle_count() const
+{
+    return _cycle_count;
+}
+void ColormapEmbedding::update_cycle_count( uint32_t cycle_count )
+{
+    if( _cycle_count != cycle_count )
+    {
+        _cycle_count = cycle_count;
+        emit cycle_count_changed( cycle_count );
     }
 }
 
@@ -758,12 +772,12 @@ Array<vec4<float>> ColormapEmbedding::compute_colors() const
     auto density  = std::vector<float>( maximum_resolution * maximum_resolution );
     auto vertices = std::vector<vec2<float>>( ( maximum_resolution + 1 ) * ( maximum_resolution + 1 ) );
 
-    for( auto cycle_index = 0; cycle_index < 20; ++cycle_index )
+    for( auto cycle_index = 0; cycle_index < _cycle_count; ++cycle_index )
     {
+        Console::info( std::format( "Computing false-coloring... cycle = {}", cycle_index + 1 ) );
+
         for( auto resolution = maximum_resolution; resolution >= 2; resolution /= 2 )
         {
-            Console::info( std::format( "Computing false-coloring... cycle = {}, resolution = {}", cycle_index + 1, resolution ) );
-
             const auto pixel_count          = resolution * resolution;
             const auto vertex_resolution    = resolution + 1;
             const auto vertex_count         = vertex_resolution * vertex_resolution;
@@ -871,8 +885,8 @@ Array<vec4<float>> ColormapEmbedding::compute_colors() const
 
         const auto matrix       = std::array<vec3<float>, 3> {
             vec3<float>{  3.2406f, -1.5372f, -0.4986f },
-            vec3<float>{ -0.9689f,  1.8758f,  0.0415f },
-            vec3<float>{  0.0557f, -0.2040f,  1.0570f }
+            vec3<float>{ -0.9689f, 1.8758f, 0.0415f },
+            vec3<float>{  0.0557f, -0.2040f, 1.0570f }
         };
         const auto R            = std::clamp( matrix[0].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );
         const auto G            = std::clamp( matrix[1].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );

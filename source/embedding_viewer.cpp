@@ -592,7 +592,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
 
                 const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
                     { "Segmentation", ColoringMode::eSegmentation },
-                    { "False-coloring", ColoringMode::eFalseColoring },
+                    { "False-coloring", ColoringMode::eFalseColoring }
                 };
 
                 for( const auto [label, coloring] : coloring_options )

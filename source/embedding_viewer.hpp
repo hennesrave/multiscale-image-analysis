@@ -10,7 +10,6 @@
 #include <qopenglshaderprogram.h>
 #include <qopenglvertexarrayobject.h>
 
-#include <qsharedpointer.h>
 #include <qwidget.h>
 
 struct RENDERDOC_API_1_6_0;

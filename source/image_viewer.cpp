@@ -375,6 +375,7 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 }
 
                 context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
+                context_menu.addSeparator();
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );

@@ -136,12 +136,18 @@ public:
     QSharedPointer<Embedding> embedding() const noexcept;
     void update_embedding( QSharedPointer<Embedding> embedding );
 
+    uint32_t cycle_count() const noexcept;
+    void update_cycle_count( uint32_t cycle_count );
+
 signals:
     void embedding_changed( QSharedPointer<Embedding> embedding );
+    void cycle_count_changed( uint32_t cycle_count );
 
 private:
     Array<vec4<float>> compute_colors() const override;
 
     uint32_t _element_count { 0 };
     QWeakPointer<Embedding> _embedding;
+
+    uint32_t _cycle_count { 20 };
 };
