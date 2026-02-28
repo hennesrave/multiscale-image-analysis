@@ -590,53 +590,53 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
     {
         auto context_menu = QMenu {};
 
-        //auto viewport_menu = context_menu.addMenu( "Viewport" );
-        //viewport_menu->addAction( "Entire Dataset", [this]
-        //{
-        //    const auto spatial_metadata = this->_database.dataset()->spatial_metadata();
-        //    this->update_viewport( Viewport { vec2<uint32_t> { 0, 0 }, spatial_metadata->dimensions } );
-        //} );
+        auto viewport_menu = context_menu.addMenu( "Viewport" );
+        viewport_menu->addAction( "Entire Dataset", [this]
+        {
+            const auto spatial_metadata = this->_database.dataset()->spatial_metadata();
+            this->update_viewport( Viewport { vec2<uint32_t> { 0, 0 }, spatial_metadata->dimensions } );
+        } );
 
-        //const auto segmentation         = _database.segmentation();
-        //const auto& element_indices     = segmentation->element_indices();
-        //const auto spatial_metadata     = _database.dataset()->spatial_metadata();
+        const auto segmentation         = _database.segmentation();
+        const auto& element_indices     = segmentation->element_indices();
+        const auto spatial_metadata     = _database.dataset()->spatial_metadata();
 
-        //for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
-        //{
-        //    const auto segment = segmentation->segment( segment_number );
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            const auto segment = segmentation->segment( segment_number );
 
-        //    auto pixmap = QPixmap { 16, 16 };
-        //    pixmap.fill( segment->color().qcolor() );
+            auto pixmap = QPixmap { 16, 16 };
+            pixmap.fill( segment->color().qcolor() );
 
-        //    auto action = viewport_menu->addAction( QIcon { pixmap }, segment->identifier(), [this, segment_number, spatial_metadata, &element_indices]
-        //    {
-        //        const auto& indices = element_indices.value( segment_number );
-        //        if( indices.empty() )
-        //        {
-        //            QMessageBox::warning( this, "", "The selected segment is empty." );
-        //            return;
-        //        }
+            auto action = viewport_menu->addAction( QIcon { pixmap }, segment->identifier(), [this, segment_number, spatial_metadata, &element_indices]
+            {
+                const auto& indices = element_indices.value( segment_number );
+                if( indices.empty() )
+                {
+                    QMessageBox::warning( this, "", "The selected segment is empty." );
+                    return;
+                }
 
-        //        auto minx = std::numeric_limits<uint32_t>::max();
-        //        auto miny = std::numeric_limits<uint32_t>::max();
-        //        auto maxx = std::numeric_limits<uint32_t>::min();
-        //        auto maxy = std::numeric_limits<uint32_t>::min();
+                auto minx = std::numeric_limits<uint32_t>::max();
+                auto miny = std::numeric_limits<uint32_t>::max();
+                auto maxx = std::numeric_limits<uint32_t>::min();
+                auto maxy = std::numeric_limits<uint32_t>::min();
 
-        //        for( const auto index : indices )
-        //        {
-        //            const auto coordinates = spatial_metadata->coordinates( index );
-        //            minx = std::min( minx, coordinates.x );
-        //            miny = std::min( miny, coordinates.y );
-        //            maxx = std::max( maxx, coordinates.x );
-        //            maxy = std::max( maxy, coordinates.y );
-        //        }
+                for( const auto index : indices )
+                {
+                    const auto coordinates = spatial_metadata->coordinates( index );
+                    minx = std::min( minx, coordinates.x );
+                    miny = std::min( miny, coordinates.y );
+                    maxx = std::max( maxx, coordinates.x );
+                    maxy = std::max( maxy, coordinates.y );
+                }
 
-        //        this->update_viewport( Viewport {
-        //            vec2<uint32_t> { minx, miny },
-        //            vec2<uint32_t> { maxx - minx + 1, maxy - miny + 1 }
-        //        } );
-        //    } );
-        //}
+                this->update_viewport( Viewport {
+                    vec2<uint32_t> { minx, miny },
+                    vec2<uint32_t> { maxx - minx + 1, maxy - miny + 1 }
+                } );
+            } );
+        }
 
         auto normalization_menu = context_menu.addMenu( "Normalization" );
         auto normalization_action_group = new QActionGroup { normalization_menu };
@@ -1296,6 +1296,7 @@ void ChannelGlyphsViewer::update_glyph_values()
         Console::warning( "Unknown normalization method." );
     }
 
+    this->reset_canvas_rectangle();
     this->update_glyph_images();
     this->update_glyph_layout();
 }
