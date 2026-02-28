@@ -45,11 +45,6 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     normalization->addItem( "Min-Max" );
     normalization->addItem( "None" );
 
-    auto features_contribution = new QDoubleSpinBox {};
-    features_contribution->setRange( 0.0, 1.0 );
-    features_contribution->setSingleStep( 0.05 );
-    features_contribution->setValue( 0.5 );
-
     auto filepath_label = new QLabel {};
     filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
     filepath_label->setTextInteractionFlags( Qt::TextSelectableByMouse );
@@ -242,7 +237,6 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     }
 
     layout->addRow( "Normalization", normalization );
-    layout->addRow( "Features Contribution", features_contribution );
     layout->addRow( "Filepath", filepath_layout );
     layout->addRow( "Export Model", export_model );
     layout->addRow( "Algorithm", algorithm );
@@ -250,11 +244,6 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     layout->addRow( button_create );
 
     QObject::connect( algorithm, &QComboBox::currentIndexChanged, algorithm_properties, &QStackedWidget::setCurrentIndex );
-    QObject::connect( normalization, &QComboBox::currentTextChanged, [features_contribution, normalization]
-    {
-        features_contribution->setEnabled( normalization->currentText() != "None" );
-    } );
-
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
     {
         const auto filters = QStringList { "*.csv", "*.mia" };
@@ -294,9 +283,10 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
         const auto segment_number   = selected_segment ? static_cast<int32_t>( selected_segment->number() ) : -1;
 
         // Datasets
-        auto datasets_memoryviews = std::vector<py::memoryview> {};
-        auto datasets_channels_indices = std::vector<std::vector<uint32_t>> {};
-        auto datasets_features_memoryviews = std::vector<std::vector<py::memoryview>> {};
+        auto datasets_memoryviews           = std::vector<py::object> {};
+        auto datasets_channels_indices      = std::vector<std::vector<uint32_t>> {};
+        auto datasets_features_memoryviews  = std::vector<std::vector<py::memoryview>> {};
+        auto modality_count                 = 0;
 
         for( size_t database_index = 0; database_index < EmbeddingCreator::database_registry->size(); ++database_index )
         {
@@ -342,9 +332,154 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
                 ) );
             }
 
-            datasets_memoryviews.push_back( *dataset_memoryview );
+            if( channels_indices.size() != 0 )
+            {
+                ++modality_count;
+            }
+            if( features_memoryviews.size() != 0 )
+            {
+                ++modality_count;
+            }
+
+            datasets_memoryviews.push_back( dataset_memoryview.value_or( py::none {} ) );
             datasets_channels_indices.push_back( std::move( channels_indices ) );
             datasets_features_memoryviews.push_back( features_memoryviews );
+        }
+
+        auto datasets_channels_weights = std::vector<double> {};
+        auto datasets_features_weights = std::vector<double> {};
+
+        if( modality_count == 0 )
+        {
+            QMessageBox::warning( nullptr, "Create Embedding...", "Please select at least one channel or feature from at least one dataset." );
+            return;
+        }
+        else if( modality_count > 1 && normalization->currentText() != "None" )
+        {
+            struct WeightMetadata
+            {
+                enum class Modality
+                {
+                    eChannels,
+                    eFeatures
+                };
+
+                size_t dataset_index;
+                Modality modality;
+                QSpinBox* weight_spinbox;
+                QLabel* percentage_label;
+            };
+            auto weights_metadata = std::vector<WeightMetadata> {};
+
+            const auto update_percentages = [&weights_metadata]
+            {
+                auto weight_total = 0;
+                for( const auto& metadata : weights_metadata )
+                {
+                    weight_total += metadata.weight_spinbox->value();
+                }
+                for( auto& metadata : weights_metadata )
+                {
+                    const auto weight = metadata.weight_spinbox->value();
+                    const auto percentage = weight_total == 0 ? 0.0 : static_cast<double>( weight ) / static_cast<double>( weight_total ) * 100.0;
+                    metadata.percentage_label->setText( QString::fromStdString( std::format( "{:.1f} %", percentage ) ) );
+                }
+            };
+
+            auto column_labels = new QVBoxLayout {};
+            column_labels->setContentsMargins( 0, 0, 0, 0 );
+            column_labels->setSpacing( 5 );
+
+            auto column_weights = new QVBoxLayout {};
+            column_weights->setContentsMargins( 0, 0, 0, 0 );
+            column_weights->setSpacing( 5 );
+
+            auto column_percentages = new QVBoxLayout {};
+            column_percentages->setContentsMargins( 0, 0, 0, 0 );
+            column_percentages->setSpacing( 5 );
+
+            for( size_t database_index = 0; database_index < EmbeddingCreator::database_registry->size(); ++database_index )
+            {
+                const auto& channels_indices        = datasets_channels_indices[database_index];
+                const auto& features_memoryviews    = datasets_features_memoryviews[database_index];
+
+                const auto options = std::vector<std::pair<WeightMetadata::Modality, size_t>> {
+                    { WeightMetadata::Modality::eChannels, channels_indices.size() },
+                    { WeightMetadata::Modality::eFeatures, features_memoryviews.size() }
+                };
+
+                for( const auto& [modality, count] : options )
+                {
+                    auto label_string = dataset_selector->itemText( static_cast<int>( database_index ) );
+                    switch( modality )
+                    {
+                    case WeightMetadata::Modality::eChannels: label_string += " (channels)"; break;
+                    case WeightMetadata::Modality::eFeatures: label_string += " (features)"; break;
+                    }
+                    auto label = new QLabel { label_string };
+
+                    auto weight = new QSpinBox {};
+                    weight->setRange( 0, 1000 );
+                    weight->setValue( count == 0? 0 : 100 );
+                    weight->setEnabled( count != 0 );
+
+                    auto percentage = new QLabel {};
+
+                    auto row = new QHBoxLayout {};
+                    row->setContentsMargins( 0, 0, 0, 0 );
+                    row->setSpacing( 5 );
+                    row->addWidget( label, 1 );
+                    row->addWidget( weight );
+                    row->addWidget( percentage );
+
+                    column_labels->addWidget( label );
+                    column_weights->addWidget( weight );
+                    column_percentages->addWidget( percentage );
+
+                    weights_metadata.push_back( { database_index, modality, weight, percentage } );
+
+                    QObject::connect( weight, &QSpinBox::valueChanged, update_percentages );
+                }
+            }
+
+            update_percentages();
+
+            auto columns = new QHBoxLayout {};
+            columns->setContentsMargins( 0, 0, 0, 0 );
+            columns->setSpacing( 10 );
+            columns->addLayout( column_labels );
+            columns->addLayout( column_weights );
+            columns->addLayout( column_percentages );
+
+            auto button_confirm = new QPushButton { "Confirm" };
+
+            auto dialog = QDialog {};
+            dialog.setWindowTitle( "Modality Contributions" );
+
+            auto layout = new QVBoxLayout { &dialog };
+            layout->setContentsMargins( 10, 10, 10, 10 );
+            layout->setSpacing( 20 );
+
+            layout->addLayout( columns );
+            layout->addStretch( 1 );
+            layout->addWidget( button_confirm );
+
+            QObject::connect( button_confirm, &QPushButton::clicked, &dialog, &QDialog::accept );
+
+            if( dialog.exec() == QDialog::Rejected )
+            {
+                return;
+            }
+
+            for( const auto& metadata : weights_metadata )
+            {
+                const auto weight = metadata.weight_spinbox->value();
+                switch( metadata.modality )
+                {
+                case WeightMetadata::Modality::eChannels: datasets_channels_weights.push_back( weight ); break;
+                case WeightMetadata::Modality::eFeatures: datasets_features_weights.push_back( weight ); break;
+                }
+            }
         }
 
         using namespace py::literals;
@@ -355,8 +490,9 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
             "datasets"_a = datasets_memoryviews,
             "datasets_channels"_a = datasets_channels_indices,
             "datasets_features"_a = datasets_features_memoryviews,
+            "datasets_channels_weights"_a = datasets_channels_weights,
+            "datasets_features_weights"_a = datasets_features_weights,
 
-            "features_contribution"_a = features_contribution->value(),
             "normalization"_a = normalization->currentText().toStdString(),
             "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
@@ -392,37 +528,54 @@ try:
     if datapoint_count == 0:
         raise ValueError( "Datapoint count cannot be zero" )
 
-    channel_count_total = 0
-    feature_count_total = 0
-    dataset_count_total = 0
+    # Normalize weights
+    dataset_channels_weights = np.array( datasets_channels_weights, dtype=np.float64 )
+    dataset_features_weights = np.array( datasets_features_weights, dtype=np.float64 )
+
+    modality_count  = np.count_nonzero( dataset_channels_weights ) + np.count_nonzero( dataset_features_weights )
+    weights_total   = np.sum( datasets_channels_weights ) + np.sum( datasets_features_weights )
+    print( f"[Embedding] Modality count: {modality_count}, weights total: {weights_total:.4f}" )
+
+    if modality_count == 0:
+        raise ValueError( "Modality count cannot be zero" )
+
+    dataset_channels_weights = dataset_channels_weights / weights_total
+    dataset_features_weights = dataset_features_weights / weights_total
+
+    channel_count_total     = 0
+    feature_count_total     = 0
+    dataset_count_total     = 0
 
     for dataset_index in range( len( datasets ) ):
-        dataset     = np.asarray( datasets[dataset_index], copy=False )
-        channels    = np.asarray( datasets_channels[dataset_index], copy=True )
-        features    = datasets_features[dataset_index]
-
-        datasets[dataset_index]             = dataset
+        if datasets[dataset_index] is not None:
+            dataset                 = np.asarray( datasets[dataset_index], copy=False )
+            datasets[dataset_index] = dataset
+        
+        channels                            = np.asarray( datasets_channels[dataset_index], copy=True )
         datasets_channels[dataset_index]    = channels
+        channel_count_total                 = channel_count_total + channels.size
+
+        features = datasets_features[dataset_index]
         for feature_index in range( len( features ) ):
             features[feature_index] = np.asarray( features[feature_index], copy=False )
+        feature_count_total = feature_count_total + len( features )
 
-        channel_count_total += channels.size
-        feature_count_total += len( features )
-
-        if channels.size != 0 or len( features ) == 0:
+        if channels.size != 0 or len( features ) != 0:
             dataset_count_total += 1
+        
+        channels_weight = dataset_channels_weights[dataset_index]
+        features_weight = dataset_features_weights[dataset_index]
 
-        print( f"[Embedding] Dataset {dataset_index}: ({dataset.shape}, {dataset.dtype}), channels: {channels.shape}, features: {len( features )} " )
+        print( f"[Embedding] Dataset {dataset_index}: ({dataset.shape}, {dataset.dtype}), channels: {len(channels)} (contribution = {channels_weight:.1%}), features: {len(features)} (contribution = {features_weight:.1%}) " )
 
     dimension_count = channel_count_total + feature_count_total
-    print( f"[Embedding] Total channel count: {channel_count_total}, total feature count: {feature_count_total}, dimension count: {dimension_count} " )
+    print( f"[Embedding] Total channel count: {channel_count_total}, total feature count: {feature_count_total}, dimension count: {dimension_count}" )
 
     if dimension_count == 0:
         raise ValueError( "Dimension count cannot be zero" )
 
     # === Create a combined dataset === #
     combined_dataset = np.zeros( ( datapoint_count, dimension_count ), dtype=np.float32 )
-    print( f"[Embedding] Combined dataset: ({combined_dataset.shape}, {combined_dataset.dtype}) " )
 
     current_channel_index = 0
     current_feature_index = channel_count_total
@@ -440,16 +593,11 @@ try:
             combined_dataset[:, current_feature_index + i] = feature[datapoint_indices]
         current_feature_index += len( features )
     
+    print( f"[Embedding] Combined dataset: ({combined_dataset.shape}, {combined_dataset.dtype}) " )
+
     # === Normalize dataset ==== #
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset with method: {normalization} " )
- 
-        # Adjust features weight based on the number of channels and features
-        features_weight = 1.0
-        if channel_count_total > 0 and feature_count_total > 0:
-            features_weight = np.sqrt( features_contribution / ( 1.0 - np.clip( features_contribution, 0.0, 0.999 ) ) * channel_count_total / feature_count_total )
-
-        print( f"[Embedding] Features weight: {features_weight:.4f} " )
 
         normalization_groups = []
 
@@ -460,16 +608,32 @@ try:
             channels    = datasets_channels[dataset_index]
             features    = datasets_features[dataset_index]
 
-            normalization_groups.append( (slice( current_channel_index, current_channel_index + channels.size ), False) )
-            current_channel_index += channels.size
+            channels_weight = dataset_channels_weights[dataset_index]
+            features_weight = dataset_features_weights[dataset_index]   
 
-            for i in range( len( features ) ):
-                normalization_groups.append( (slice( current_feature_index, current_feature_index + 1 ), True) )
-                current_feature_index += 1
+            if len( channels ) > 0:
+                channels_weight = channels_weight / np.sqrt( len( channels ) )
+                normalization_groups.append( (
+                    slice( current_channel_index, current_channel_index + channels.size ),
+                    channels_weight,
+                    dataset_index,
+                    "channels"
+                ) )
+                current_channel_index += len( channels )
+            
+            if len( features ) > 0:
+                features_weight = features_weight / np.sqrt( len( features ) )    
 
-        for group_slice, is_feature in normalization_groups:
-            print( f"[Embedding] Normalizing group: {group_slice}, is_feature: {is_feature} " )
+                for i in range( len( features ) ):
+                    normalization_groups.append( (
+                        slice( current_feature_index, current_feature_index + 1 ),
+                        features_weight,
+                        dataset_index,
+                        f"feature {i}"
+                    ) )
+                    current_feature_index += 1
 
+        for group_slice, weight, dataset_index, label in normalization_groups:
             group_dataview = combined_dataset[:, group_slice]
 
             if normalization == "Z-score":
@@ -485,14 +649,9 @@ try:
                 np.subtract( group_dataview, group_minimum, out=group_dataview )
                 np.divide( group_dataview, group_range, out=group_dataview )
             
-            if is_feature:
-                np.multiply( group_dataview, features_weight, out=group_dataview )
-            else:
-                dataset_weight = np.sqrt(channel_count_total / (dataset_count_total * group_dataview.shape[1]))
-                np.multiply( group_dataview, dataset_weight, out=group_dataview )
-    
-            total_variance = np.var( group_dataview )
-            print( f"[Embedding] Group variance after normalization: {total_variance:.6f} " )
+            np.multiply( group_dataview, weight, out=group_dataview )
+
+            print( f"[Embedding] Normalized dataset {dataset_index} ({label}) in {group_slice} with weight = {weight:.4}. Total variance after normalization: {np.var( group_dataview ):.6f} " )
 
     # === Train model and compute embedding ==== #
     model                   = None
