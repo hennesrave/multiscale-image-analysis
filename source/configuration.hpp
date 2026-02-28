@@ -82,20 +82,7 @@ namespace config
         QTabWidget::pane {
             border-top: 1px solid #E0E0E0;
         }
-        QTabBar::tab {
-            background: #EEEEEE;
-            border: 1px solid #E0E0E0;
-            border-bottom: none;
-            border-top-left-radius: 2px;
-            border-top-right-radius: 2px;
-            height: 10px;
-            width: 30px;
-            margin-left: 5px;
-            margin-top: 2px;
-        }
-        QTabBar::tab:selected, QTabBar::tab:hover {
-            background: #BDBDBD;
-        }
+
 
         QToolButton                             { border: none; border-radius: 5px; background: #FAFAFA; padding: 0px; }
         QToolButton:hover, QToolButton:pressed  { background: #E0E0E0; }

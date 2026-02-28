@@ -14,6 +14,7 @@
 #include <qlayout.h>
 #include <qsplitter.h>
 #include <qstackedlayout.h>
+#include <qtabwidget.h>
 
 Workspace::Workspace( Database& database ) : _database { database }
 {
@@ -74,16 +75,19 @@ Workspace::Workspace( Database& database ) : _database { database }
         {
             _image_viewer->update_colormap( colormap );
         } );
-        QObject::connect( _embedding_viewer, &EmbeddingViewer::request_channels_embedding, this, [this]
+        QObject::connect( _embedding_viewer, &EmbeddingViewer::request_channels_embedding, this, [this, splitter_image_spectrum_histogram_boxplot]
         {
             if( !_channel_glyphs_viewer )
             {
-                _channel_glyphs_viewer.reset( new ChannelGlyphsViewer { _database } );
-                _channel_glyphs_viewer->setWindowTitle( "Channels Embedding" );
-                _channel_glyphs_viewer->resize( 1600, 900 );
-            }
+                _channel_glyphs_viewer = new ChannelGlyphsViewer { _database };
 
-            _channel_glyphs_viewer->show();
+                auto embedding_tabwidget = new QTabWidget {};
+                splitter_image_spectrum_histogram_boxplot->replaceWidget( 1, embedding_tabwidget );
+
+                embedding_tabwidget->addTab( _embedding_viewer, "Pixels Embedding" );
+                embedding_tabwidget->addTab( _channel_glyphs_viewer, "Channels Embedding" );
+                embedding_tabwidget->setCurrentWidget( _channel_glyphs_viewer );
+            }
         } );
         QObject::connect( database.features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
         {

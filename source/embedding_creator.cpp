@@ -138,7 +138,6 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     auto button_create = new QPushButton { "Create" };
 
     auto layout = new QFormLayout { this };
-
     layout->addRow( "Filter", segment_selector );
 
     struct DatasetWidgets

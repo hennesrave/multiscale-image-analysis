@@ -26,11 +26,10 @@ private:
     Database& _database;
 
     BoxplotViewer* _boxplot_viewer = nullptr;
+    ChannelGlyphsViewer* _channel_glyphs_viewer = nullptr;
     ColormapViewer* _colormap_viewer = nullptr;
     EmbeddingViewer* _embedding_viewer = nullptr;
     HistogramViewer* _histogram_viewer = nullptr;
     ImageViewer* _image_viewer = nullptr;
     SpectrumViewer* _spectrum_viewer = nullptr;
-
-    QSharedPointer<ChannelGlyphsViewer> _channel_glyphs_viewer;
 };

@@ -427,15 +427,6 @@ void EmbeddingViewer::resizeEvent( QResizeEvent* event )
 }
 void EmbeddingViewer::paintEvent( QPaintEvent* event )
 {
-    const auto embedding = _database.embedding();
-    if( !embedding )
-    {
-        return;
-    }
-
-    const auto& indices = embedding->indices();
-    const auto& coordinates = embedding->coordinates();
-
     auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing );
 
@@ -444,6 +435,19 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     auto content_rectangle = QRect {};
     content_rectangle.setSize( QSize { extent, extent } );
     content_rectangle.moveCenter( center );
+
+    const auto embedding = _database.embedding();
+    if( !embedding )
+    {
+        painter.setPen( Qt::black );
+        painter.setBrush( Qt::NoBrush );
+        painter.drawRect( content_rectangle );
+        painter.drawText( content_rectangle, Qt::AlignCenter, "Right-click > Embedding > Create" );
+        return;
+    }
+
+    const auto& indices = embedding->indices();
+    const auto& coordinates = embedding->coordinates();
 
     // Render scatterplot
     if( !_scatterplot_image_valid )
