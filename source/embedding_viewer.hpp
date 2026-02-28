@@ -131,6 +131,9 @@ public:
     double screen_to_world_y( double value ) const;
     QPointF screen_to_world( const QPointF& screen ) const;
 
+signals:
+    void request_channels_embedding() const;
+
 private:
     void update_coloring();
     void reset_projection_matrix();

@@ -4,6 +4,7 @@
 #include "utility.hpp"
 
 #include "boxplot_viewer.hpp"
+#include "channel_glyphs_viewer.hpp"
 #include "colormap_viewer.hpp"
 #include "embedding_viewer.hpp"
 #include "histogram_viewer.hpp"
@@ -72,6 +73,17 @@ Workspace::Workspace( Database& database ) : _database { database }
         QObject::connect( _colormap_viewer, &ColormapViewer::colormap_changed, this, [this] ( QSharedPointer<Colormap> colormap )
         {
             _image_viewer->update_colormap( colormap );
+        } );
+        QObject::connect( _embedding_viewer, &EmbeddingViewer::request_channels_embedding, this, [this]
+        {
+            if( !_channel_glyphs_viewer )
+            {
+                _channel_glyphs_viewer.reset( new ChannelGlyphsViewer { _database } );
+                _channel_glyphs_viewer->setWindowTitle( "Channels Embedding" );
+                _channel_glyphs_viewer->resize( 1600, 900 );
+            }
+
+            _channel_glyphs_viewer->show();
         } );
         QObject::connect( database.features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
         {

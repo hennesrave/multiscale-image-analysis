@@ -4,6 +4,7 @@
 class Database;
 
 class BoxplotViewer;
+class ChannelGlyphsViewer;
 class ColormapViewer;
 class EmbeddingViewer;
 class HistogramViewer;
@@ -30,4 +31,6 @@ private:
     HistogramViewer* _histogram_viewer = nullptr;
     ImageViewer* _image_viewer = nullptr;
     SpectrumViewer* _spectrum_viewer = nullptr;
+
+    QSharedPointer<ChannelGlyphsViewer> _channel_glyphs_viewer;
 };

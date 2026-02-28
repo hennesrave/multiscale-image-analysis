@@ -556,6 +556,55 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 _database.populate_segmentation_menu( context_menu, true );
                 context_menu.addSeparator();
 
+                auto embedding_menu = context_menu.addMenu( "Embedding" );
+
+                embedding_menu->addAction( "Create", [this]
+                {
+                    auto embedding_creator = EmbeddingCreator {};
+                    if( embedding_creator.exec() == QDialog::Accepted )
+                    {
+                        this->import_embedding( embedding_creator.filepath() );
+
+                        if( auto embedding = _database.embedding() )
+                        {
+                            embedding->update_model( embedding_creator.model() );
+                        }
+                    }
+                } );
+                embedding_menu->addAction( "Import", [this]
+                {
+                    auto selected_filter = QString { "*.mia" };
+                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter );
+                    this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
+                } );
+
+                if( _database.dataset()->spatial_metadata() )
+                {
+                    embedding_menu->addAction( "Channels (experimental)", this, &EmbeddingViewer::request_channels_embedding );
+                }
+
+                auto coloring_menu = context_menu.addMenu( "Coloring" );
+                auto coloring_action_group = new QActionGroup { coloring_menu };
+                coloring_action_group->setExclusive( true );
+
+                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
+                    { "Segmentation", ColoringMode::eSegmentation },
+                    { "False-coloring", ColoringMode::eFalseColoring }
+                };
+
+                for( const auto [label, coloring] : coloring_options )
+                {
+                    const auto action = coloring_menu->addAction( label, [this, coloring]
+                    {
+                        _coloring = coloring;
+                        this->update_coloring();
+                    } );
+
+                    action->setCheckable( true );
+                    action->setChecked( _coloring == coloring );
+                    coloring_action_group->addAction( action );
+                }
+
                 auto point_size_menu = context_menu.addMenu( "Point Size" );
                 auto point_size_action_group = new QActionGroup { point_size_menu };
                 point_size_action_group->setExclusive( true );
@@ -586,50 +635,7 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                     point_size_action_group->addAction( action );
                 }
 
-                auto coloring_menu = context_menu.addMenu( "Coloring" );
-                auto coloring_action_group = new QActionGroup { coloring_menu };
-                coloring_action_group->setExclusive( true );
-
-                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
-                    { "Segmentation", ColoringMode::eSegmentation },
-                    { "False-coloring", ColoringMode::eFalseColoring }
-                };
-
-                for( const auto [label, coloring] : coloring_options )
-                {
-                    const auto action = coloring_menu->addAction( label, [this, coloring]
-                    {
-                        _coloring = coloring;
-                        this->update_coloring();
-                    } );
-
-                    action->setCheckable( true );
-                    action->setChecked( _coloring == coloring );
-                    coloring_action_group->addAction( action );
-                }
-
                 context_menu.addAction( "Reset View", [this] { this->reset_projection_matrix(); } );
-
-                context_menu.addSeparator();
-                context_menu.addAction( "Create Embedding", [this]
-                {
-                    auto embedding_creator = EmbeddingCreator {};
-                    if( embedding_creator.exec() == QDialog::Accepted )
-                    {
-                        this->import_embedding( embedding_creator.filepath() );
-
-                        if( auto embedding = _database.embedding() )
-                        {
-                            embedding->update_model( embedding_creator.model() );
-                        }
-                    }
-                } );
-                context_menu.addAction( "Import Embedding", [this]
-                {
-                    auto selected_filter = QString { "*.mia" };
-                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter );
-                    this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
-                } );
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );

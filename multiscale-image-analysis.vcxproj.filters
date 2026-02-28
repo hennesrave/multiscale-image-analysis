@@ -141,6 +141,9 @@
     <ClCompile Include="source\dataset_alignment_dialog.cpp">
       <Filter>Source Files\application\widgets</Filter>
     </ClCompile>
+    <ClCompile Include="source\channel_glyphs_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -246,6 +249,9 @@
     </QtMoc>
     <QtMoc Include="source\dataset_alignment_dialog.hpp">
       <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\channel_glyphs_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

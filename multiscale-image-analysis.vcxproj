@@ -105,6 +105,7 @@
   <ItemGroup>
     <ClCompile Include="source\boxplot.cpp" />
     <ClCompile Include="source\boxplot_viewer.cpp" />
+    <ClCompile Include="source\channel_glyphs_viewer.cpp" />
     <ClCompile Include="source\colormap.cpp" />
     <ClCompile Include="source\colormap_viewer.cpp" />
     <ClCompile Include="source\console.cpp" />
@@ -155,6 +156,7 @@
     <QtMoc Include="source\workspace.hpp" />
     <QtMoc Include="source\boxplot_viewer.hpp" />
     <QtMoc Include="source\boxplot.hpp" />
+    <QtMoc Include="source\channel_glyphs_viewer.hpp" />
     <ClInclude Include="source\configuration.hpp" />
     <ClInclude Include="source\console.hpp" />
     <QtMoc Include="source\dataset_exporter.hpp" />
