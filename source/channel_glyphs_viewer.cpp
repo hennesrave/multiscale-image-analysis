@@ -396,12 +396,13 @@ namespace utility
 // ----- ChannelGlyphsViewer ----- //
 
 ChannelGlyphsViewer::ChannelGlyphsViewer( Database& database )
-    : QWidget {}, _database { database }, _colormap_template { ColormapTemplate::turbo.clone() }
+    : QWidget {}, _database { database }, _colormap { &ColormapTemplate::turbo }
 {
     this->setFocusPolicy( Qt::WheelFocus );
     this->setMouseTracking( true );
 
     QObject::connect( this, &ChannelGlyphsViewer::normalization_changed, this, &ChannelGlyphsViewer::update_glyph_values );
+    QObject::connect( this, &ChannelGlyphsViewer::positioning_changed, this, &ChannelGlyphsViewer::update_glyph_layout );
     QObject::connect( this, &ChannelGlyphsViewer::viewport_changed, this, &ChannelGlyphsViewer::update_glyph_values );
 
     const auto features = _database.features();
@@ -425,6 +426,19 @@ void ChannelGlyphsViewer::update_normalization( Normalization normalization )
     {
         _normalization = normalization;
         emit normalization_changed( _normalization );
+    }
+}
+
+ChannelGlyphsViewer::Positioning ChannelGlyphsViewer::positioning() const noexcept
+{
+    return _positioning;
+}
+void ChannelGlyphsViewer::update_positioning( Positioning positioning )
+{
+    if( _positioning != positioning )
+    {
+        _positioning = positioning;
+        emit positioning_changed( _positioning );
     }
 }
 
@@ -464,19 +478,6 @@ void ChannelGlyphsViewer::paintEvent( QPaintEvent* event )
 
     painter.drawImage( _canvas_rectangle, _canvas );
 
-    const auto highlighted_channel_index = _database.highlighted_channel_index();
-    if( highlighted_channel_index.has_value() )
-    {
-        painter.setBrush( Qt::NoBrush );
-        painter.setPen( QPen { QColor { 255, 255, 255, 100 }, 1.0, Qt::DashLine } );
-        painter.setCompositionMode( QPainter::CompositionMode_Difference );
-
-        const auto rectangle = this->glyph_rectangle( highlighted_channel_index.value() );
-        painter.drawRect( rectangle );
-
-        painter.setCompositionMode( QPainter::CompositionMode_SourceOver );
-    }
-
     // Render features
     for( const auto object : *_database.features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
     {
@@ -496,10 +497,47 @@ void ChannelGlyphsViewer::paintEvent( QPaintEvent* event )
         painter.setCompositionMode( QPainter::CompositionMode_SourceOver );
     }
 
+    // Render highlighted channel
+    const auto highlighted_channel_index = _database.highlighted_channel_index();
+    if( highlighted_channel_index.has_value() )
+    {
+        const auto channel_index = highlighted_channel_index.value();
+
+        painter.setBrush( Qt::NoBrush );
+        painter.setPen( QPen { QColor { 255, 255, 255, 100 }, 1.0, Qt::DashLine } );
+        painter.setCompositionMode( QPainter::CompositionMode_Difference );
+
+        const auto glyph_rectangle = this->glyph_rectangle( channel_index );
+        painter.drawRect( glyph_rectangle );
+
+        painter.setCompositionMode( QPainter::CompositionMode_SourceOver );
+    }
+
     // Render border
     painter.setPen( Qt::black );
     painter.setBrush( Qt::NoBrush );
     painter.drawRect( _canvas_rectangle );
+
+    // Render channel information
+    if( highlighted_channel_index.has_value() )
+    {
+        const auto dataset              = _database.dataset();
+        const auto channel_index        = highlighted_channel_index.value();
+        const auto channel_identifier   = dataset->channel_identifier( channel_index );
+        const auto string               = "Channel " + channel_identifier;
+
+        auto string_rectangle = painter.fontMetrics().boundingRect( QRect {}, Qt::TextSingleLine, string ).toRectF();
+        string_rectangle.moveTopLeft( QPointF { 10.0, 10.0 } );
+
+        auto content_rectangle = string_rectangle.marginsAdded( QMarginsF { 5.0, 5.0, 5.0, 5.0 } );
+
+        painter.setPen( Qt::NoPen );
+        painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
+        painter.drawRoundedRect( content_rectangle, 5.0, 5.0 );
+
+        painter.setPen( Qt::black );
+        painter.drawText( string_rectangle, Qt::AlignCenter, string );
+    }
 }
 void ChannelGlyphsViewer::mouseMoveEvent( QMouseEvent* event )
 {
@@ -552,17 +590,7 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
     {
         auto context_menu = QMenu {};
 
-        auto distance_matrix_menu = context_menu.addMenu( "Distance Matrix" );
-        distance_matrix_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_distance_matrix );
-        distance_matrix_menu->addAction( "Export", [this] { this->on_export_distance_matrix(); } );
-        distance_matrix_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_distance_matrix );
-
-        auto embedding_menu = context_menu.addMenu( "Embedding" );
-        embedding_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_embedding );
-        embedding_menu->addAction( "Export", [this] { this->on_export_embedding(); } );
-        embedding_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_embedding );
-
-        context_menu.addSeparator();
+        auto viewport_menu = context_menu.addMenu( "Viewport" );
 
         auto normalization_menu = context_menu.addMenu( "Normalization" );
         auto normalization_action_group = new QActionGroup { normalization_menu };
@@ -585,7 +613,42 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
             normalization_action_group->addAction( action );
         }
 
+        auto colormap_menu = context_menu.addMenu( "Colormap" );
+
+        auto positioning_menu = context_menu.addMenu( "Positioning" );
+        auto positioning_action_group = new QActionGroup { positioning_menu };
+        positioning_action_group->setExclusive( true );
+
+        const auto positioning_options = std::vector<std::pair<const char*, Positioning>> {
+            { "Linear", Positioning::eLinear },
+            { "Embedding", Positioning::eEmbedding },
+            { "Gridified", Positioning::eGridified }
+        };
+
+        for( const auto& [label, positioning] : positioning_options )
+        {
+            const auto action = positioning_menu->addAction( label, [this, positioning]
+            {
+                this->update_positioning( positioning );
+            } );
+            action->setCheckable( true );
+            action->setChecked( _positioning == positioning );
+            positioning_action_group->addAction( action );
+        }
+
         context_menu.addAction( "Reset View", this, &ChannelGlyphsViewer::reset_canvas_rectangle );
+
+        context_menu.addSeparator();
+
+        auto distance_matrix_menu = context_menu.addMenu( "Distance Matrix" );
+        distance_matrix_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_distance_matrix );
+        distance_matrix_menu->addAction( "Export", [this] { this->on_export_distance_matrix(); } );
+        distance_matrix_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_distance_matrix );
+
+        auto embedding_menu = context_menu.addMenu( "Embedding" );
+        embedding_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_embedding );
+        embedding_menu->addAction( "Export", [this] { this->on_export_embedding(); } );
+        embedding_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_embedding );
 
         context_menu.exec( event->globalPosition().toPoint() );
     }
@@ -807,10 +870,6 @@ void ChannelGlyphsViewer::on_import_distance_matrix()
     auto distance_matrix = Matrix<double>::allocate( dimensions );
     filestream.read( distance_matrix.data(), distance_matrix.bytes() );
 
-    const auto element_indices_size = filestream.read<size_t>();
-    auto element_indices = std::vector<uint32_t>( element_indices_size );
-    filestream.read( element_indices.data(), element_indices_size * sizeof( uint32_t ) );
-
     if( !filestream )
     {
         QMessageBox::warning( nullptr, "Import Distance Matrix...", "An error occurred while reading the distance matrix from the file." );
@@ -880,6 +939,80 @@ void ChannelGlyphsViewer::on_create_embedding()
 
     QObject::connect( create_button, &QPushButton::clicked, this, [&]
     {
+        auto intepreter = py::interpreter {};
+
+        const auto distance_matrix_memoryview = py::memoryview::from_buffer(
+            _distance_matrix.data(),
+            { _distance_matrix.dimensions()[0], _distance_matrix.dimensions()[1] },
+            { sizeof( double ) * _distance_matrix.dimensions()[1], sizeof( double ) }
+        );
+
+        using namespace py::literals;
+        auto locals = py::dict {
+            "distance_matrix"_a = distance_matrix_memoryview,
+            "n_neighbors"_a = neighbors->value(),
+            "min_dist"_a = minimum_distance->value(),
+            "error"_a = std::string {}
+        };
+
+        Console::info( "Computing channels embedding with UMAP..." );
+
+        try
+        {
+            py::exec( R"(
+try:
+    import numpy as np
+    import umap
+
+    distance_matrix = np.asarray( distance_matrix )
+    print( f"[Embedding] Distance matrix shape: {distance_matrix.shape}" )
+    print( distance_matrix )
+
+    model = umap.UMAP(
+        n_components	= 2,
+        n_neighbors		= n_neighbors,
+        min_dist		= min_dist,
+        metric			= "precomputed",                
+        random_state	= 42,
+        n_jobs			= 1,
+        verbose			= True
+    )
+    embedding = model.fit_transform( distance_matrix ).astype( np.float64 )
+    print( f"[Embedding] Embedding shape: {embedding.shape}" )
+
+    # Normalize embedding to [-1, 1]x[-1, 1]
+    embedding_minimum   = np.min( embedding, axis=0 )
+    embedding_maximum   = np.max( embedding, axis=0 )
+    embedding_center    = ( embedding_minimum + embedding_maximum ) / 2.0
+    embedding_scale     = np.max( embedding_maximum - embedding_minimum ) / 2.0
+    embedding           = ( embedding - embedding_center ) / embedding_scale
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+        }
+        catch( const py::error_already_set& error )
+        {
+            locals["error"] = error.what();
+        }
+
+        if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
+        {
+            Console::error( std::format( "Python error during channels embedding computation: {}", error ) );
+            QMessageBox::critical( nullptr, "", "Failed to compute channels embedding.", QMessageBox::Ok );
+            return;
+        }
+
+        Console::info( "Channels embedding computed successfully." );
+
+        const auto embedding = locals["embedding"].cast<py::array_t<double>>();
+        _embedding = Array<vec2<double>>::allocate( channel_count );
+        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+        {
+            _embedding[channel_index] = vec2<double> {
+                embedding.at( channel_index, 0 ),
+                embedding.at( channel_index, 1 )
+            };
+        }
 
         dialog.accept();
     } );
@@ -991,32 +1124,16 @@ void ChannelGlyphsViewer::update_glyph_values()
     _canvas                     = QImage { canvas_width, canvas_height, QImage::Format_RGB32 };
     Console::info( std::format( "Optimal canvas dimensions: {}x{}", canvas_width, canvas_height ) );
 
-    _potential_glyph_positions = Array<vec2<double>>::allocate( gridsize * gridsize );
-    for( int col = 0; col < gridsize; ++col )
-    {
-        for( int row = 0; row < gridsize; ++row )
-        {
-            _potential_glyph_positions.value( gridsize * col + row ) = vec2<double> {
-                ( col + 0.5 ) * glyph_width,
-                ( row + 0.5 ) * glyph_height
-            };
-        }
-    }
-
     Console::info( "Initializing glyphs..." );
     _glyphs.resize( channel_count );
     for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
     {
         auto& glyph     = _glyphs[channel_index];
-        const auto col  = channel_index % static_cast<uint32_t>( gridsize );
-        const auto row  = channel_index / static_cast<uint32_t>( gridsize );
-
-        glyph.values = Matrix<double> { { static_cast<size_t>( glyph_width ), static_cast<size_t>( glyph_height ) }, 0.0 };
-        glyph.image  = QImage { glyph_width, glyph_height, QImage::Format_RGB32 };
-        glyph.offset = vec2<uint32_t> {
-            ( row & 0x1? gridsize - 1 - col : col ) * glyph_width,
-            row * glyph_height
+        glyph.values    = Matrix<double> {
+            { static_cast<size_t>( glyph_width ), static_cast<size_t>( glyph_height ) },
+            0.0
         };
+        glyph.image     = QImage { glyph_width, glyph_height, QImage::Format_RGB32 };
     }
 
     Console::info( "Accumulating glyph intensities..." );
@@ -1126,6 +1243,7 @@ void ChannelGlyphsViewer::update_glyph_values()
     }
 
     this->update_glyph_images();
+    this->update_glyph_layout();
 }
 void ChannelGlyphsViewer::update_glyph_images()
 {
@@ -1146,12 +1264,171 @@ void ChannelGlyphsViewer::update_glyph_images()
             for( int y = 0; y < glyph_height; ++y )
             {
                 const auto value = glyph.values.value( { static_cast<size_t>( x ), static_cast<size_t>( y ) } );
-                const auto color = _colormap_template->color( value ).qcolor();
+                const auto color = _colormap->color( value ).qcolor();
                 glyph.image.setPixelColor( x, y, color );
             }
         }
     }
 
+    this->update_canvas();
+}
+void ChannelGlyphsViewer::update_glyph_layout()
+{
+    Console::info( "Updating glyph layout..." );
+
+    if( _glyphs.empty() )
+    {
+        return;
+    }
+
+    if( _positioning == Positioning::eEmbedding && _embedding.empty() )
+    {
+        QMessageBox::warning( nullptr, "Channels Embedding", "Please create or import a channels embedding." );
+        _positioning = Positioning::eLinear;
+    }
+
+    if( _positioning == Positioning::eGridified && _embedding.empty() )
+    {
+        QMessageBox::warning( nullptr, "Channels Embedding", "Please create or import a channels embedding." );
+        _positioning = Positioning::eLinear;
+    }
+
+    const auto dataset          = _database.dataset();
+    const auto channel_count    = dataset->channel_count();
+    const auto gridsize         = static_cast<int>( std::ceil( std::sqrt( channel_count ) ) );
+    const auto glyph_width      = _glyphs.front().image.width();
+    const auto glyph_height     = _glyphs.front().image.height();
+
+    if( _positioning == Positioning::eLinear )
+    {
+        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+        {
+            const auto col                  = channel_index % static_cast<uint32_t>( gridsize );
+            const auto row                  = channel_index / static_cast<uint32_t>( gridsize );
+            _glyphs[channel_index].offset   = vec2<uint32_t> {
+                ( row & 0x1? gridsize - 1 - col : col ) * glyph_width,
+                row * glyph_height
+            };
+        }
+    }
+    else if( _positioning == Positioning::eEmbedding || _positioning == Positioning::eGridified )
+    {
+        const auto canvas_rectangle     = _canvas.rect().toRectF();
+        const auto canvas_center        = canvas_rectangle.center();
+        const auto canvas_radius        = std::min(
+            canvas_rectangle.width() - glyph_width,
+            canvas_rectangle.height() - glyph_height
+        ) / 2.0;
+
+        auto glyph_centers = Array<vec2<double>>::allocate( channel_count );
+        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+        {
+            const auto embedding_position   = _embedding.value( channel_index );
+            glyph_centers[channel_index]    = vec2<double> {
+                canvas_center.x() + embedding_position.x * canvas_radius,
+                canvas_center.y() + embedding_position.y * canvas_radius
+            };
+        }
+
+        const auto glyph_width_half     = glyph_width / 2.0;
+        const auto glyph_height_half    = glyph_height / 2.0;
+
+        if( _positioning == Positioning::eEmbedding )
+        {
+            for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+            {
+                const auto glyph_center         = glyph_centers[channel_index];
+                _glyphs[channel_index].offset   = vec2<uint32_t> {
+                    static_cast<uint32_t>( std::round( glyph_center.x - glyph_width_half ) ),
+                    static_cast<uint32_t>( std::round( glyph_center.y - glyph_height_half ) )
+                };
+            }
+        }
+        else
+        {
+            auto candidate_positions = Array<vec2<double>>::allocate( gridsize * gridsize );
+            for( int col = 0; col < gridsize; ++col )
+            {
+                for( int row = 0; row < gridsize; ++row )
+                {
+                    candidate_positions.value( gridsize * col + row ) = vec2<double> {
+                        ( col + 0.5 ) * glyph_width,
+                        ( row + 0.5 ) * glyph_height
+                    };
+                }
+            }
+
+            auto intepreter = py::interpreter {};
+
+            const auto sources_memoryview = py::memoryview::from_buffer(
+                reinterpret_cast<const double*>( glyph_centers.data() ),
+                { static_cast<size_t>( channel_count ), size_t { 2 } },
+                { sizeof( vec2<double> ), sizeof( double ) }
+            );
+
+            const auto targets_memoryview = py::memoryview::from_buffer(
+                reinterpret_cast<const double*>( candidate_positions.data() ),
+                { static_cast<size_t>( gridsize * gridsize ), size_t { 2 } },
+                { sizeof( vec2<double> ), sizeof( double ) }
+            );
+
+            using namespace py::literals;
+            auto locals = py::dict {
+                "sources"_a = sources_memoryview,
+                "targets"_a = targets_memoryview,
+                "error"_a = std::string {}
+            };
+
+            Console::info( "Optimizing glyph layout with linear sum assignment..." );
+
+            try
+            {
+                py::exec( R"(
+try:
+    import numpy as np
+    from scipy.optimize import linear_sum_assignment
+
+    sources = np.asarray( sources, copy=True )
+    targets = np.asarray( targets )
+
+    cost_matrix = np.linalg.norm( sources[:, None, :] - targets[None, :, :], axis=-1 )
+    row_indices, col_indices = linear_sum_assignment( cost_matrix )
+
+    for source_index, target_index in zip( row_indices, col_indices ):
+        sources[source_index] = targets[target_index]
+    sources = sources.astype( np.float64 )
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+            }
+            catch( const py::error_already_set& error )
+            {
+                locals["error"] = error.what();
+            }
+
+            if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
+            {
+                Console::error( std::format( "Python error during gridification: {}", error ) );
+                QMessageBox::critical( nullptr, "", "Failed to compute gridification.", QMessageBox::Ok );
+
+                _positioning = Positioning::eEmbedding;
+                this->update_glyph_layout();
+                return;
+            }
+
+            const auto optimized_glyph_centers = locals["sources"].cast<py::array_t<float>>();
+
+            for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+            {
+                const auto x                    = optimized_glyph_centers.at( channel_index, 0 );
+                const auto y                    = optimized_glyph_centers.at( channel_index, 1 );
+                _glyphs[channel_index].offset   = vec2<uint32_t> {
+                    static_cast<uint32_t>( std::round( x - glyph_width_half ) ),
+                    static_cast<uint32_t>( std::round( y - glyph_height_half ) )
+                };
+            }
+        }
+    }
     this->update_canvas();
 }
 void ChannelGlyphsViewer::update_canvas()

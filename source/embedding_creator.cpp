@@ -717,7 +717,7 @@ try:
 except Exception as exception:
     error = str( exception ))", py::globals(), locals );
         }
-        catch( py::error_already_set& error )
+        catch( const py::error_already_set& error )
         {
             locals["error"] = error.what();
         }
