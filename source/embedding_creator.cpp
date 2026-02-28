@@ -286,6 +286,8 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
         auto datasets_memoryviews           = std::vector<py::object> {};
         auto datasets_channels_indices      = std::vector<std::vector<uint32_t>> {};
         auto datasets_features_memoryviews  = std::vector<std::vector<py::memoryview>> {};
+        auto datasets_channels_weights      = std::vector<double> {};
+        auto datasets_features_weights      = std::vector<double> {};
         auto modality_count                 = 0;
 
         for( size_t database_index = 0; database_index < EmbeddingCreator::database_registry->size(); ++database_index )
@@ -341,13 +343,13 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
                 ++modality_count;
             }
 
+            datasets_channels_weights.push_back( channels_indices.empty()? 0.0 : 100.0 );
+            datasets_features_weights.push_back( features_memoryviews.empty()? 0.0 : 100.0 );
+
             datasets_memoryviews.push_back( dataset_memoryview.value_or( py::none {} ) );
             datasets_channels_indices.push_back( std::move( channels_indices ) );
             datasets_features_memoryviews.push_back( features_memoryviews );
         }
-
-        auto datasets_channels_weights = std::vector<double> {};
-        auto datasets_features_weights = std::vector<double> {};
 
         if( modality_count == 0 )
         {
@@ -471,13 +473,16 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
                 return;
             }
 
-            for( const auto& metadata : weights_metadata )
+            for( size_t metadata_index = 0; metadata_index < weights_metadata.size(); ++metadata_index )
             {
-                const auto weight = metadata.weight_spinbox->value();
+                const auto& metadata        = weights_metadata[metadata_index];
+                const auto weight           = metadata.weight_spinbox->value();
+                const auto dataset_index    = metadata.dataset_index;
+
                 switch( metadata.modality )
                 {
-                case WeightMetadata::Modality::eChannels: datasets_channels_weights.push_back( weight ); break;
-                case WeightMetadata::Modality::eFeatures: datasets_features_weights.push_back( weight ); break;
+                case WeightMetadata::Modality::eChannels: datasets_channels_weights[dataset_index] = weight; break;
+                case WeightMetadata::Modality::eFeatures: datasets_features_weights[dataset_index] = weight; break;
                 }
             }
         }
