@@ -2,19 +2,27 @@
 
 #include "segmentation_creator.hpp"
 #include "segmentation_manager.hpp"
+#include "python.hpp"
 
 #include <qfiledialog.h>
 #include <qmessagebox.h>
 
-Database::Database( QSharedPointer<Dataset> dataset ) : _dataset { dataset }
+Database::Database( QSharedPointer<Dataset> dataset, QSharedPointer<Segmentation> segmentation ) : _dataset { dataset }, _segmentation { segmentation }
 {
-    _segmentation = QSharedPointer<Segmentation>::create( _dataset->element_count() );
+    if( !_segmentation )
+    {
+        _segmentation = QSharedPointer<Segmentation>::create( _dataset->element_count() );
+    }
+
     _features = QSharedPointer<Storage<Feature>>::create();
     _colormaps = QSharedPointer<Storage<Colormap>>::create();
+    _colormap_embedding = QSharedPointer<ColormapEmbedding>::create( _dataset->element_count() );
 
     for( int i = 0; i < 5; ++i )
         _segmentation->append_segment();
     _active_segment = _segmentation->segment( 1 );
+
+    QObject::connect( this, &Database::embedding_changed, _colormap_embedding.get(), &ColormapEmbedding::update_embedding );
 }
 
 QSharedPointer<Dataset> Database::dataset() const noexcept
@@ -32,6 +40,24 @@ QSharedPointer<Storage<Feature>> Database::features() const noexcept
 QSharedPointer<Storage<Colormap>> Database::colormaps() const noexcept
 {
     return _colormaps;
+}
+
+QSharedPointer<Embedding> Database::embedding() const noexcept
+{
+    return _embedding;
+}
+void Database::update_embedding( QSharedPointer<Embedding> embedding )
+{
+    if( _embedding != embedding )
+    {
+        _embedding = embedding;
+        emit embedding_changed( _embedding );
+    }
+}
+
+QSharedPointer<ColormapEmbedding> Database::colormap_embedding() const noexcept
+{
+    return _colormap_embedding;
 }
 
 QSharedPointer<Segment> Database::active_segment() const
@@ -82,7 +108,7 @@ void Database::update_highlighted_channel_index( std::optional<uint32_t> index )
     }
 }
 
-void Database::populate_segmentation_menu( QMenu& context_menu )
+void Database::populate_segmentation_menu( QMenu& context_menu, bool enable_propogate )
 {
     for( uint32_t segment_number = 1; segment_number < _segmentation->segment_count(); ++segment_number )
     {
@@ -121,9 +147,111 @@ void Database::populate_segmentation_menu( QMenu& context_menu )
     segmentation_menu->addAction( "Manage", [this] { SegmentationManager::execute( *this ); } );
     segmentation_menu->addAction( "Create", [this]
     {
-        const auto segmentation = SegmentationCreator::execute( *this );
-        _segmentation->deserialize( segmentation->serialize() );
+        if( const auto segmentation = SegmentationCreator::execute( *this ) )
+        {
+            _segmentation->deserialize( segmentation->serialize() );
+        }
     } );
+
+    if( enable_propogate )
+    {
+        segmentation_menu->addAction( "Propagate", [this]
+        {
+            if( !_embedding )
+            {
+                QMessageBox::critical( nullptr, "", "No embedding available for propogation." );
+                return;
+            }
+
+            auto interpreter = py::interpreter {};
+
+            const auto segmentation_memoryview = py::memoryview::from_buffer(
+                _segmentation->segment_numbers().data(),
+                { _segmentation->element_count() },
+                { sizeof( uint32_t ) }
+            );
+
+            const auto& indices = _embedding->indices();
+            const auto embedding_indices_memoryview = py::memoryview::from_buffer(
+                indices.data(),
+                { indices.size() },
+                { sizeof( uint32_t ) }
+            );
+
+            const auto& coordinates = _embedding->coordinates();
+            const auto embedding_coordinates_memoryview = py::memoryview::from_buffer(
+                reinterpret_cast<const float*>( coordinates.data() ),
+                { coordinates.size(), size_t { 2 } },
+                { 2 * sizeof( float ), sizeof( float ) }
+            );
+
+            using namespace py::literals;
+            auto locals = py::dict {
+                "segmentation"_a = segmentation_memoryview,
+                "embedding_indices"_a = embedding_indices_memoryview,
+                "embedding"_a = embedding_coordinates_memoryview,
+                "error"_a = std::string {}
+            };
+
+            py::exec( R"(
+try:
+    print( f"[Segmentation] Training KNN classifier..." )
+
+    import numpy as np
+    from sklearn.neighbors import KNeighborsClassifier
+
+    segmentation    = np.asarray( segmentation, copy=False )
+    embedding       = np.asarray( embedding, copy=False )
+
+    assigned_filter     = np.full( segmentation.shape[0], False, dtype=bool )
+    unassigned_filter   = np.full( segmentation.shape[0], False, dtype=bool )
+
+    indices                     = np.asarray( embedding_indices, copy=False )
+    assigned_filter[indices]    = True
+    unassigned_filter[indices]  = True
+
+    assigned_filter     = assigned_filter & (segmentation > 0)
+    unassigned_filter   = unassigned_filter & (segmentation == 0)
+
+    assigned_count      = np.sum( assigned_filter )
+    unassigned_count    = np.sum( unassigned_filter )
+
+    if assigned_count == 0:
+        raise Exception( "Cannot propagate empty segmentation." )
+
+    if unassigned_count == 0:
+        raise Exception( "No unassigned datapoints to propagate to." )
+
+    neighbor_count  = min( 15, assigned_count - 1 )
+    classifier      = KNeighborsClassifier( n_neighbors=neighbor_count, n_jobs=-1 )
+    classifier.fit( embedding[assigned_filter[indices], :], segmentation[assigned_filter] )
+    
+    print( f"[Segmentation] Predicting labels for unassigned datapoints..." )
+    segment_numbers                     = segmentation.copy()
+    segment_numbers[unassigned_filter]  = classifier.predict( embedding[unassigned_filter[indices], :] )
+
+    print( f"[Segmentation] Propagation complete." )
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+
+            if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
+            {
+                Console::error( std::format( "Python error during segmentation propagation: {}", error ) );
+                QMessageBox::critical( nullptr, "", "Failed to propagate segmentation.", QMessageBox::Ok );
+                return;
+            }
+
+            const auto segment_numbers = locals["segment_numbers"].cast<py::array_t<uint32_t>>();
+            auto editor = _segmentation->editor();
+
+            for( py::ssize_t i = 0; i < segment_numbers.size(); ++i )
+            {
+                editor.update_value( static_cast<uint32_t>( i ), segment_numbers.at( i ) );
+            }
+        } );
+    }
+
     segmentation_menu->addAction( "Import", [this]
     {
         const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "JSON Files (*.json)", nullptr );

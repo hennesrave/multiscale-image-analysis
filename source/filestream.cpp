@@ -2,7 +2,9 @@
 
 #include "dataset.hpp"
 
+#include <ranges>
 #include <regex>
+#include <string_view>
 
 #include <qmessagebox.h>
 
@@ -21,6 +23,12 @@ BinaryStream& BinaryStream::read( void* data, size_t size )
     return *this;
 }
 
+template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const std::string& value )
+{
+    stream.write( static_cast<uint64_t>( value.size() ) );
+    stream.write( value.data(), value.size() );
+    return stream;
+}
 template<> BinaryStream& BinaryStream::read( BinaryStream& stream, std::string& value )
 {
     const auto size = stream.read<uint64_t>();
@@ -28,13 +36,42 @@ template<> BinaryStream& BinaryStream::read( BinaryStream& stream, std::string& 
     stream.read( value.data(), size );
     return stream;
 }
-template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const std::string& value )
+
+template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const QSharedPointer<Dataset>& dataset )
 {
-    stream.write( static_cast<uint64_t>( value.size() ) );
-    stream.write( value.data(), value.size() );
+    auto identifier = std::string { "Dataset" };
+    if( dataset->spatial_metadata() ) identifier += "|SpatialMetadata";
+    if( dataset->override_channel_identifiers().has_value() ) identifier += "|ChannelIdentifiers";
+
+    stream.write( identifier );
+    stream.write( dataset->element_count() );
+    stream.write( dataset->channel_count() );
+    stream.write( dataset->basetype() );
+
+    dataset->visit( [&stream] ( const auto& dataset )
+    {
+        const auto& channel_positions = dataset.channel_positions();
+        stream.write( channel_positions.data(), channel_positions.bytes() );
+
+        const auto& intensities = dataset.intensities();
+        stream.write( intensities.data(), intensities.bytes() );
+    } );
+
+    if( const auto& identifiers = dataset->override_channel_identifiers(); identifiers.has_value() )
+    {
+        for( const auto& identifier : *identifiers )
+        {
+            stream.write( identifier.toStdString() );
+        }
+    }
+
+    if( dataset->spatial_metadata() )
+    {
+        stream.write( *dataset->spatial_metadata() );
+    }
+
     return stream;
 }
-
 template<> BinaryStream& BinaryStream::read( BinaryStream& stream, QSharedPointer<Dataset>& dataset )
 {
     const auto identifier = stream.read<std::string>();
@@ -49,9 +86,10 @@ template<> BinaryStream& BinaryStream::read( BinaryStream& stream, QSharedPointe
     auto attribute_spatial_metadata = false;
     auto attribute_channel_identifiers = false;
 
-    for( size_t match_index = 1; match_index < matches.size(); ++match_index )
+    auto attributes = matches[1].str() | std::views::split( '|' );
+    for( const auto& attribute_match : attributes )
     {
-        const auto attribute = matches[match_index].str();
+        const auto attribute = std::string { attribute_match.begin(), attribute_match.end() };
         if( attribute == "ChannelIdentifiers" ) attribute_channel_identifiers = true;
         else if( attribute == "SpatialMetadata" ) attribute_spatial_metadata = true;
         else
@@ -139,38 +177,26 @@ template<> BinaryStream& BinaryStream::read( BinaryStream& stream, QSharedPointe
 
     return stream;
 }
-template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const QSharedPointer<Dataset>& dataset )
+
+template<> BinaryStream& BinaryStream::write( BinaryStream& stream, const py::object& object )
 {
-    auto identifier = std::string { "Dataset" };
-    if( dataset->spatial_metadata() ) identifier += "|SpatialMetadata";
-    if( dataset->override_channel_identifiers().has_value() ) identifier += "|ChannelIdentifiers";
+    auto interpreter    = py::interpreter {};
+    auto pickle         = py::module::import( "pickle" );
+    auto bytes          = pickle.attr( "dumps" )( object, pickle.attr( "HIGHEST_PROTOCOL" ) );
+    auto string         = bytes.cast<std::string>();
 
-    stream.write( identifier );
-    stream.write( dataset->element_count() );
-    stream.write( dataset->channel_count() );
-    stream.write( dataset->basetype() );
+    stream.write( string );
+    return stream;
+}
+template<> BinaryStream& BinaryStream::read( BinaryStream& stream, py::object& object )
+{
+    std::string string;
+    stream.read( string );
 
-    dataset->visit( [&stream] ( const auto& dataset )
-    {
-        const auto& channel_positions = dataset.channel_positions();
-        stream.write( channel_positions.data(), channel_positions.bytes() );
-
-        const auto& intensities = dataset.intensities();
-        stream.write( intensities.data(), intensities.bytes() );
-    } );
-
-    if( const auto& identifiers = dataset->override_channel_identifiers(); identifiers.has_value() )
-    {
-        for( const auto& identifier : *identifiers )
-        {
-            stream.write( identifier.toStdString() );
-        }
-    }
-
-    if( dataset->spatial_metadata() )
-    {
-        stream.write( *dataset->spatial_metadata() );
-    }
+    auto interpreter    = py::interpreter {};
+    auto pickle         = py::module::import( "pickle" );
+    auto bytes          = py::bytes { string };
+    object              = pickle.attr( "loads" )( bytes );
 
     return stream;
 }
@@ -235,4 +261,9 @@ MIAFileStream::operator bool() const noexcept
 const config::ApplicationVersion& MIAFileStream::application_version() const noexcept
 {
     return _application_version;
+}
+
+bool MIAFileStream::finished()
+{
+    return _filestream.peek() == EOF;
 }

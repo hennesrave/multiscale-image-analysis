@@ -58,7 +58,7 @@ private:
     void baseline_correction() const;
     void export_spectra() const;
     void import_spectra();
-    void export_dataset() const;
+    void compute_similarity( const std::vector<ImportedSpectrum>& spectra ) const;
 
     Database& _database;
 

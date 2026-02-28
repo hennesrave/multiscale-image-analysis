@@ -1,6 +1,10 @@
 #include "colormap.hpp"
 
+#include "embedding.hpp"
 #include "feature.hpp"
+#include "python.hpp"
+
+#include <numbers>
 
 // ----- ColormapTemplate ----- //
 
@@ -523,7 +527,7 @@ void Colormap1D::update_colormap_template( std::unique_ptr<ColormapTemplate> col
 
         if( _colormap_template = std::move( colormap_template ) )
         {
-            QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, this, &Colormap1D::colors_changed );
+            QObject::connect( _colormap_template.get(), &ColormapTemplate::colors_changed, &_colors, &ComputedObject::invalidate );
         }
         emit template_changed( _colormap_template );
     }
@@ -675,5 +679,412 @@ Array<vec4<float>> ColormapRGB::compute_colors() const
         const auto b = colors_b.value( element_index ).b;
         colors[element_index] = vec4<float> { r, g, b, 1.0f };
     } );
+    return colors;
+}
+
+// ----- ColormapEmbedding ----- //
+
+ColormapEmbedding::ColormapEmbedding( uint32_t element_count ) : _element_count { element_count }
+{
+    QObject::connect( this, &ColormapEmbedding::embedding_changed, &_colors, &ComputedObject::invalidate );
+    QObject::connect( this, &ColormapEmbedding::cycle_count_changed, &_colors, &ComputedObject::invalidate );
+}
+
+uint32_t ColormapEmbedding::element_count() const
+{
+    return _element_count;
+}
+
+QSharedPointer<Embedding> ColormapEmbedding::embedding() const noexcept
+{
+    return _embedding.lock();
+}
+void ColormapEmbedding::update_embedding( QSharedPointer<Embedding> embedding )
+{
+    if( _embedding != embedding )
+    {
+        if( auto embedding = _embedding.lock() )
+        {
+            QObject::disconnect( embedding.get(), nullptr, this, nullptr );
+        }
+
+        if( _embedding = embedding )
+        {
+            QObject::connect( embedding.get(), &QObject::destroyed, this, [this] { emit embedding_changed( nullptr ); } );
+        }
+        emit embedding_changed( _embedding.lock() );
+    }
+}
+
+uint32_t ColormapEmbedding::cycle_count() const noexcept
+{
+    return _cycle_count;
+}
+void ColormapEmbedding::update_cycle_count( uint32_t cycle_count )
+{
+    if( _cycle_count != cycle_count )
+    {
+        _cycle_count = cycle_count;
+        emit cycle_count_changed( cycle_count );
+    }
+}
+
+Array<vec4<float>> ColormapEmbedding::compute_colors() const
+{
+    auto colors = Array<vec4<float>> { this->element_count(), vec4<float> { 0.0f, 0.0f, 0.0f, 0.0f } };
+
+    auto embedding = _embedding.lock();
+    if( !embedding )
+    {
+        return colors;
+    }
+
+    auto points = embedding->coordinates();
+
+    // Normalize coordinates to [0, 1]x[0, 1]
+    auto minimum = vec2<float> { std::numeric_limits<float>::max(), std::numeric_limits<float>::max() };
+    auto maximum = vec2<float> { std::numeric_limits<float>::lowest(), std::numeric_limits<float>::lowest() };
+
+    for( const auto [x, y] : points )
+    {
+        minimum.x = std::min( minimum.x, x );
+        minimum.y = std::min( minimum.y, y );
+        maximum.x = std::max( maximum.x, x );
+        maximum.y = std::max( maximum.y, y );
+    }
+
+    const auto center = ( minimum + maximum ) / 2.0f;
+    const auto extent = ( maximum - minimum ).maximum();
+
+    for( auto& point : points )
+    {
+        point = ( point - center ) / extent + vec2<float> { 0.5f, 0.5f };
+    }
+
+    // Regularize points
+    auto maximum_resolution = int32_t { 64 };
+    while( maximum_resolution < static_cast<int32_t>( std::sqrt( points.size() ) ) )
+    {
+        maximum_resolution *= 2;
+    }
+    maximum_resolution = std::min( maximum_resolution, int32_t { 1024 } );
+
+    auto density  = std::vector<float>( maximum_resolution * maximum_resolution );
+    auto vertices = std::vector<vec2<float>>( ( maximum_resolution + 1 ) * ( maximum_resolution + 1 ) );
+
+    for( uint32_t cycle_index = 0; cycle_index < _cycle_count; ++cycle_index )
+    {
+        Console::info( std::format( "Computing false-coloring... cycle = {}", cycle_index + 1 ) );
+
+        for( auto resolution = maximum_resolution; resolution >= 2; resolution /= 2 )
+        {
+            const auto pixel_count          = resolution * resolution;
+            const auto vertex_resolution    = resolution + 1;
+            const auto vertex_count         = vertex_resolution * vertex_resolution;
+
+            // Compute histogram
+            std::memset( density.data(), 0, pixel_count * sizeof( float ) );
+            for( auto point_index = size_t { 0 }; point_index < points.size(); point_index++ )
+            {
+                const auto point = points[point_index];
+                const auto x = std::min( static_cast<int>( point.x * resolution ), resolution - 1 );
+                const auto y = std::min( static_cast<int>( point.y * resolution ), resolution - 1 );
+
+                density[y * resolution + x] += 1.0f;
+            }
+
+            // Compute vertices
+            for( auto vertex_index = 0; vertex_index < vertex_count; ++vertex_index )
+            {
+                const auto vertex_x = vertex_index % vertex_resolution;
+                const auto vertex_y = vertex_index / vertex_resolution;
+
+                const auto L00_index = ( vertex_y == 0 || vertex_x == 0 )? 0 : ( vertex_y - 1 ) * resolution + ( vertex_x - 1 );
+                const auto L01_index = ( vertex_y == resolution || vertex_x == 0 )? 0 : vertex_y * resolution + ( vertex_x - 1 );
+                const auto L10_index = ( vertex_y == 0 || vertex_x == resolution )? 0 : ( vertex_y - 1 ) * resolution + vertex_x;
+                const auto L11_index = ( vertex_y == resolution || vertex_x == resolution )? 0 : vertex_y * resolution + vertex_x;
+
+                const auto L00  = density[L00_index];
+                const auto L01  = density[L01_index];
+                const auto L10  = density[L10_index];
+                const auto L11  = density[L11_index];
+                const auto L    = L00 + L01 + L10 + L11;
+
+                const auto denominator  = 4.0f * ( L == 0.0f? 1.0f : L );
+                const auto displacement = vec2<float> {
+                    ( L00 - L11 + L01 - L10 ) / denominator,
+                    ( L00 - L11 + L10 - L01 ) / denominator
+                };
+
+                vertices[vertex_index] = vec2<float> {
+                    std::clamp( ( static_cast<float>( vertex_x ) + displacement.x ) / resolution, 0.0f, 1.0f ),
+                    std::clamp( ( static_cast<float>( vertex_y ) + displacement.y ) / resolution, 0.0f, 1.0f )
+                };
+            }
+
+            // Transform points
+            for( auto point_index = size_t { 0 }; point_index < points.size(); ++point_index )
+            {
+                const auto point = points[point_index];
+                const auto x_float = point.x * resolution;
+                const auto y_float = point.y * resolution;
+
+                const auto x = std::min( static_cast<int>( x_float ), resolution - 1 );
+                const auto y = std::min( static_cast<int>( y_float ), resolution - 1 );
+
+                const auto u = x_float - static_cast<float>( x );
+                const auto v = y_float - static_cast<float>( y );
+
+                const auto vertex00_index = y * vertex_resolution + x;
+                const auto vertex10_index = vertex00_index + 1;
+                const auto vertex01_index = vertex00_index + vertex_resolution;
+                const auto vertex11_index = vertex01_index + 1;
+
+                const auto vertex00 = vertices[vertex00_index];
+                const auto vertex10 = vertices[vertex10_index];
+                const auto vertex01 = vertices[vertex01_index];
+                const auto vertex11 = vertices[vertex11_index];
+
+                const auto weight00 = ( 1.0f - u ) * ( 1.0f - v );
+                const auto weight10 = u * ( 1.0f - v );
+                const auto weight01 = ( 1.0f - u ) * v;
+                const auto weight11 = u * v;
+
+                points[point_index] = vec2<float> {
+                    weight00 * vertex00.x + weight10 * vertex10.x + weight01 * vertex01.x + weight11 * vertex11.x,
+                    weight00 * vertex00.y + weight10 * vertex10.y + weight01 * vertex01.y + weight11 * vertex11.y
+                };
+            }
+        }
+    }
+
+    // Transform point to color
+    const auto& embedding_indices = embedding->indices();
+
+    for( auto point_index = size_t { 0 }; point_index < points.size(); ++point_index )
+    {
+        const auto point        = points[point_index] * 2.0f - vec2<float>{ 1.0f, 1.0f };
+        const auto radian       = std::atan2( point.y, point.x );
+        const auto magnitude    = point.length();
+
+        const auto lightness    = ( magnitude / std::numbers::sqrt2_v<float> ) * 60.0f + 30.0f;     // \in [30, 90]
+        const auto hue          = radian + std::numbers::pi_v<float>;                               // \in [0, 2 * pi]
+        const auto chroma       = 35.0f;
+
+        const auto a            = chroma * std::cos( hue );
+        const auto b            = chroma * std::sin( hue );
+
+        const auto fy           = ( lightness + 16.0f ) / 116.0f;
+        const auto fx           = a / 500.0f + fy;
+        const auto fz           = fy - b / 200.0f;
+        const auto delta        = 6.0f / 29.0f;
+
+        const auto x            = 0.95047f * ( fx > delta? fx * fx * fx : ( fx - 4.0f / 29.0f ) * 3.0f * delta * delta );
+        const auto y            = 1.00000f * ( fy > delta? fy * fy * fy : ( fy - 4.0f / 29.0f ) * 3.0f * delta * delta );
+        const auto z            = 1.08883f * ( fz > delta? fz * fz * fz : ( fz - 4.0f / 29.0f ) * 3.0f * delta * delta );
+
+        const auto matrix       = std::array<vec3<float>, 3> {
+            vec3<float>{  3.2406f, -1.5372f, -0.4986f },
+            vec3<float>{ -0.9689f, 1.8758f, 0.0415f },
+            vec3<float>{  0.0557f, -0.2040f, 1.0570f }
+        };
+        const auto R            = std::clamp( matrix[0].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );
+        const auto G            = std::clamp( matrix[1].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );
+        const auto B            = std::clamp( matrix[2].dot( vec3<float>{ x, y, z } ), 0.0f, 1.0f );
+
+        colors[embedding_indices[point_index]] = vec4<float> { R, G, B, 1.0f };
+    }
+
+    return colors;
+
+    const auto colors_memoryview = py::memoryview::from_buffer(
+        reinterpret_cast<float*>( colors.data() ),
+        { colors.size(), 4ull },
+        { 4 * sizeof( float ), sizeof( float ) }
+    );
+
+    const auto& indices = embedding->indices();
+    const auto indices_memoryview = py::memoryview::from_buffer(
+        indices.data(),
+        { indices.size() },
+        { sizeof( uint32_t ) }
+    );
+
+    const auto& coordinates = embedding->coordinates();
+    const auto coordinates_memoryview = py::memoryview::from_buffer(
+        reinterpret_cast<const float*>( coordinates.data() ),
+        { coordinates.size(), size_t { 2 } },
+        { 2 * sizeof( float ), sizeof( float ) }
+    );
+
+    using namespace py::literals;
+    auto locals = py::dict {
+        "colors"_a = colors_memoryview,
+        "indices"_a = indices_memoryview,
+        "coordinates"_a = coordinates_memoryview,
+
+        "error"_a = std::string {}
+    };
+
+    try
+    {
+        py::exec( R"(
+try:
+    import numpy as np
+    from tqdm import tqdm
+
+    colors      = np.asarray(colors, copy=False)
+    indices     = np.asarray(indices, copy=False)
+    coordinates = np.asarray(coordinates, copy=True)
+    
+    minimum     = coordinates.min( axis=0 )
+    maximum     = coordinates.max( axis=0 )
+    center      = (minimum + maximum) / 2
+    extent      = np.max(maximum - minimum)
+    coordinates = (coordinates - center) / extent + 0.5
+
+    minimum = coordinates.min( axis=0 )
+    maximum = coordinates.max( axis=0 )
+
+    maximum_resolution = 64
+    while maximum_resolution < int(np.sqrt(coordinates.shape[0])):
+        maximum_resolution *= 2
+    maximum_resolution = min( maximum_resolution, 512 )
+
+    resolutions = [maximum_resolution]
+    while resolutions[-1] != 2:
+        resolutions.append( resolutions[-1] // 2 )
+
+    print( f"[Colormap] Maximum resolution: {maximum_resolution}" )
+
+    for resolution in tqdm(10 * resolutions):
+        histogram = np.histogram2d(coordinates[:, 0], coordinates[:, 1], bins=resolution, range=[[0, 1], [0, 1]])[0]
+        histogram = np.pad(histogram, pad_width=1, mode="edge")
+
+        H00 = histogram[:-1, :-1]
+        H01 = histogram[:-1, 1:]
+        H10 = histogram[1:, :-1]
+        H11 = histogram[1:, 1:]
+
+        denominator = np.maximum(4.0 * (H00 + H01 + H10 + H11), 1e-8)
+        deformation = np.stack([
+            H00 + H01 - H10 - H11,
+            H00 - H01 + H10 - H11
+        ], axis=-1, dtype=np.float32) / denominator[:, :, np.newaxis]        
+
+        t           = np.linspace(0.0, 1.0, resolution + 1, dtype=np.float32)
+        xy, ys      = np.meshgrid(t, t, indexing="ij")
+        vertices    = np.stack([xy, ys], axis=-1)
+        vertices    = vertices + deformation / resolution
+        vertices    = np.clip(vertices, 0.0, 1.0)
+
+        xy  = coordinates * resolution
+        ixy = np.floor( xy ).astype( np.int32 )
+        ixy = np.clip( ixy, 0, resolution - 1 )
+
+        uv = xy - ixy
+        u = uv[:, 0]
+        v = uv[:, 1]
+
+        v00 = vertices[ixy[:, 0] + 0, ixy[:, 1] + 0]
+        v01 = vertices[ixy[:, 0] + 0, ixy[:, 1] + 1]
+        v10 = vertices[ixy[:, 0] + 1, ixy[:, 1] + 0]
+        v11 = vertices[ixy[:, 0] + 1, ixy[:, 1] + 1]
+
+        w00 = (1 - u) * (1 - v)
+        w01 = (1 - u) * v
+        w10 = u * (1 - v)
+        w11 = u * v
+
+        coordinates = w00[:, np.newaxis] * v00 + w01[:, np.newaxis] * v01 + w10[:, np.newaxis] * v10 + w11[:, np.newaxis] * v11
+
+    np.save("colormap_embedding.npy", coordinates)
+
+    parameters = [
+        (0.0, 0.0, 0.0, 1.0, 0.0),
+        (5.0, 0.625, -15.0, 21.574445794248938, 0.04387699236857252),
+        (10.0, 0.375, -17.75, 31.296333175691622, 0.06142778931600154),
+        (15.0, -1.171875, -20.203125, 39.66125570358665, 0.09652938321085956),
+        (20.0, -4.0625, -21.265625, 48.10166577150014, 0.07020318778971604),
+        (25.0, -6.0, -22.0, 55.297902248461135, 0.04387699236857252),
+        (30.0, -5.7109375, -25.6796875, 62.45205701762897, 0.09652938321085956),
+        (35.0, 58.5, -24.9375, 67.43749943628822, 1.5707963267948966),
+        (40.0, -7.6953125, -29.7265625, 76.13302245416233, 0.07020318778971604),
+        (45.0, -8.96875, -33.4765625, 83.80190730099659, 0.07897858626343054),
+        (50.0, -9.234375, -36.125, 90.52006208858963, 0.07897858626343054),
+        (55.0, -7.3984375, -41.484375, 95.58681442916603, 0.1491817740531466),
+        (60.0, -18.359375, -32.1875, 90.80890583798575, 0.13163097710571758),
+        (65.0, -19.3125, -35.1484375, 86.95580958937984, 0.28081275115886417),
+        (70.0, -27.359375, -28.0390625, 82.6229198066501, 0.2983635481062932),
+        (75.0, 24.125, 1.3125, 72.62499939021149, 1.5707963267948966),
+        (80.0, -45.109375, -7.890625, 74.36320149640972, 0.24571115726400616),
+        (85.0, -53.453125, -0.34375, 70.94707291363657, 0.23693575879029163),
+        (90.0, -47.5, -11.625, 61.08449066360775, 0.28081275115886417),
+        (95.0, -22.46875, -6.859375, 26.419915398976713, 0.21060956336914813),
+        (100.0, 0.0, 0.0, 1.0, 0.0)
+    ]
+
+    index = [i for i, (lightness, _, _, _, _) in enumerate(parameters) if lightness == 55.0][0]
+    lightness, translation_a, translation_b, scaling, rotation = parameters[index]
+
+    rotation_matrix = np.array([
+        [np.cos( rotation ), -np.sin( rotation )],
+        [np.sin( rotation ),  np.cos( rotation )]
+    ], dtype=np.float32)
+    # coordinates = coordinates @ rotation_matrix.T * scaling + np.array([ translation_a, translation_b ], dtype=np.float32)
+    coordinates = coordinates * 2.0 - 1.0
+
+    H = np.arctan2(coordinates[:, 1], coordinates[:, 0]) + np.pi
+    L = np.linalg.norm(coordinates, axis=-1) / np.sqrt(2.0) * 60.0 + 20.0
+    C = 50.0
+
+    a = C * np.cos( H )
+    b = C * np.sin( H )
+
+    fy = (L + 16.0) / 116.0
+    fx = a / 500.0 + fy
+    fz = fy - (b / 200.0)
+
+    delta = 6.0 / 29.0
+
+    x = np.where(fx > delta, fx ** 3, 3.0 * delta ** 2 * (fx - 4.0 / 29.0))
+    y = np.where(fy > delta, fy ** 3, 3.0 * delta ** 2 * (fy - 4.0 / 29.0))
+    z = np.where(fz > delta, fz ** 3, 3.0 * delta ** 2 * (fz - 4.0 / 29.0))
+
+    Xn, Yn, Zn = 0.95047, 1.00000, 1.08883
+    xyz = np.stack([x * Xn, y * Yn, z * Zn], axis=-1)
+
+    M = np.array([
+        [ 3.2404542, -1.5371385, -0.4985314],
+        [-0.9692660,  1.8760108,  0.0415560],
+        [ 0.0556434, -0.2040259,  1.0572252]
+    ], dtype=np.float32)
+
+    rgb_linear = xyz @ M.T
+    rgb_linear = np.clip(rgb_linear, 0.0, 1.0)
+
+    rgb = np.where(
+        rgb_linear > 0.0031308,
+        1.055 * (rgb_linear ** (1 / 2.4)) - 0.055,
+        12.92 * rgb_linear
+    )
+    rgb = np.clip(rgb, 0.0, 1.0)
+    alpha = np.ones(coordinates.shape[0], dtype=np.float32)
+
+    colors[indices] = np.stack([rgb[:, 0], rgb[:, 1], rgb[:, 2], alpha], axis=-1)
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+    }
+    catch( py::error_already_set& error )
+    {
+        locals["error"] = error.what();
+    }
+
+    if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
+    {
+        Console::error( std::format( "Python error during colormap computation: {}", error ) );
+    }
+
     return colors;
 }

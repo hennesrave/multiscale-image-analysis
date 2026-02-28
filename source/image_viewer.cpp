@@ -3,11 +3,9 @@
 #include "colormap.hpp"
 #include "database.hpp"
 #include "dataset.hpp"
-#include "colormap_viewer.hpp"
 #include "feature.hpp"
-#include "segment_selector.hpp"
+#include "python.hpp"
 #include "segmentation.hpp"
-#include "segmentation_manager.hpp"
 
 #include <qactiongroup.h>
 #include <qapplication.h>
@@ -15,21 +13,15 @@
 #include <qclipboard.h>
 #include <qevent.h>
 #include <qfiledialog.h>
-#include <qlabel.h>
 #include <qlineedit.h>
-#include <qlayout.h>
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qmimedata.h>
 #include <qpainter.h>
-#include <qslider.h>
-#include <qstackedlayout.h>
-#include <qtoolbutton.h>
-#include <qwidgetaction.h>
 
 // ----- ImageViewer ----- //
 
-ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { database }, _dataset { database.dataset() }, _segmentation { database.segmentation() }
+ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { database }
 {
     this->setFocusPolicy( Qt::WheelFocus );
     this->setMouseTracking( true );
@@ -37,6 +29,9 @@ ImageViewer::ImageViewer( Database& database ) : QWidget {}, _database { databas
     const auto segmentation = _database.segmentation();
     QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, qOverload<>( &QWidget::update ) );
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
+
+    const auto colormap_embedding = _database.colormap_embedding();
+    QObject::connect( colormap_embedding.get(), &ColormapEmbedding::colors_changed, this, qOverload<>( &QWidget::update ) );
 }
 
 void ImageViewer::update_colormap( QSharedPointer<Colormap> colormap )
@@ -69,12 +64,15 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     painter.setRenderHint( QPainter::Antialiasing );
     painter.fillRect( _image_rectangle, Qt::black );
 
+    const auto dataset = _database.dataset();
+    const auto segmentation = _database.segmentation();
+
     // Render image
     if( const auto colormap = _colormap.lock() )
     {
         if( const auto& colors = colormap->colors(); colors.size() )
         {
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto dimensions = dataset->spatial_metadata()->dimensions;
             const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
             painter.setOpacity( _image_opacity );
             painter.drawImage( _image_rectangle, image );
@@ -82,18 +80,47 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         }
     }
 
-    // Render segmentation colors
-    const auto& segmentation_colors = _segmentation->element_colors();
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
-    const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-    painter.setOpacity( _segmentation_opacity );
-    painter.drawImage( _image_rectangle, image );
-    painter.setOpacity( 1.0 );
+    if( _coloring == ColoringMode::eSegmentation )
+    {
+        // Render segmentation colors
+        const auto& segmentation_colors = segmentation->element_colors();
+        const auto dimensions = dataset->spatial_metadata()->dimensions;
+        const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+        painter.setOpacity( _segmentation_opacity );
+        painter.drawImage( _image_rectangle, image );
+        painter.setOpacity( 1.0 );
+    }
+    else if( _coloring == ColoringMode::eFalseColoring )
+    {
+        if( const auto colormap = _database.colormap_embedding() )
+        {
+            const auto& colors = colormap->colors();
+            const auto dimensions = dataset->spatial_metadata()->dimensions;
+            const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+            painter.setOpacity( _segmentation_opacity );
+            painter.drawImage( _image_rectangle, image );
+            painter.setOpacity( 1.0 );
+        }
+    }
+
+    // Render overlay image
+    if( _overlay_image.size() )
+    {
+        const auto image = QImage {
+            reinterpret_cast<const uchar*>( _overlay_image.data() ),
+            static_cast<int>( _overlay_image.dimensions()[0] ),
+            static_cast<int>( _overlay_image.dimensions()[1] ),
+            QImage::Format_RGB888
+        };
+        painter.setOpacity( _segmentation_opacity );
+        painter.drawImage( _image_rectangle, image );
+        painter.setOpacity( 1.0 );
+    }
 
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto spatial_metadata = _dataset->spatial_metadata();
+        const auto spatial_metadata = dataset->spatial_metadata();
         const auto dimensions = spatial_metadata->dimensions;
         const auto pixel = spatial_metadata->coordinates( *element_index );
         const auto screen = this->pixel_to_screen( pixel );
@@ -144,7 +171,7 @@ void ImageViewer::paintEvent( QPaintEvent* event )
     // Render highlighted element information
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto pixel = _dataset->spatial_metadata()->coordinates( *element_index );
+        const auto pixel = dataset->spatial_metadata()->coordinates( *element_index );
         const auto position = QPointF { 0.0, 0.0 };
 
         auto labels_string = QString {
@@ -203,7 +230,11 @@ void ImageViewer::paintEvent( QPaintEvent* event )
         painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
         painter.drawRoundedRect( _sidebar_rectangle, 5.0, 5.0 );
 
-        const auto handle_color = _database.active_segment()->color().qcolor();
+        auto handle_color = QColor { 0, 0, 0, 255 };
+        if( _coloring == ColoringMode::eSegmentation )
+        {
+            handle_color = _database.active_segment()->color().qcolor();
+        }
 
         auto groove_rectangle = _sidebar_rectangle.marginsRemoved( QMarginsF { 8.0, 8.0, 8.0, 8.0 } );
         const auto handle_position = groove_rectangle.bottom() - _segmentation_opacity * groove_rectangle.height();
@@ -279,7 +310,35 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 _database.populate_segmentation_menu( context_menu );
                 context_menu.addSeparator();
 
-                context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
+                auto coloring_menu = context_menu.addMenu( "Coloring" );
+                auto coloring_action_group = new QActionGroup { coloring_menu };
+                coloring_action_group->setExclusive( true );
+
+                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
+                    { "Segmentation", ColoringMode::eSegmentation },
+                    { "False-coloring", ColoringMode::eFalseColoring },
+                };
+
+                for( const auto [label, coloring] : coloring_options )
+                {
+                    const auto action = coloring_menu->addAction( label, [this, coloring]
+                    {
+                        _coloring = coloring;
+                        this->update();
+                    } );
+
+                    action->setCheckable( true );
+                    action->setChecked( _coloring == coloring );
+                    coloring_action_group->addAction( action );
+                }
+
+                //auto overlay_menu = context_menu.addMenu( "Overlay" );
+                //overlay_menu->addAction( "Import", [this] { this->import_overlay(); } );
+                //overlay_menu->addAction( "Remove", [this]
+                //{
+                //    _overlay_image.clear();
+                //    this->update();
+                //} );
 
                 auto image_opacity_menu = context_menu.addMenu( "Image Opacity" );
                 auto image_opacity_action_group = new QActionGroup { image_opacity_menu };
@@ -315,6 +374,9 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                     segmentation_opacity_action_group->addAction( action );
                 }
 
+                context_menu.addAction( "Reset View", [this] { this->reset_image_rectangle(); } );
+                context_menu.addSeparator();
+
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );
                 screenshot_menu->addAction( "2x Resolution", [this] { this->create_screenshot( 2 ); } );
@@ -338,10 +400,14 @@ void ImageViewer::mouseReleaseEvent( QMouseEvent* event )
                 if( begin.x > end.x ) std::swap( begin.x, end.x );
                 if( begin.y > end.y ) std::swap( begin.y, end.y );
 
-                const auto spatial_metadata = _dataset->spatial_metadata();
-                const auto active_segment = _database.active_segment();
+                const auto dataset          = _database.dataset();
+                const auto segmentation     = _database.segmentation();
+                const auto active_segment   = _database.active_segment();
+
+                const auto spatial_metadata = dataset->spatial_metadata();
                 const auto segment_number = _selection_mode == InteractionMode::eGrowSegment ? _database.active_segment()->number() : 0;
-                auto segmentation_editor = _segmentation->editor();
+
+                auto segmentation_editor = segmentation->editor();
                 for( auto x = begin.x; x <= end.x; ++x )
                 {
                     for( auto y = begin.y; y <= end.y; ++y )
@@ -386,8 +452,9 @@ void ImageViewer::mouseMoveEvent( QMouseEvent* event )
 
     if( _image_rectangle.contains( event->position() ) )
     {
+        const auto spatial_metadata = _database.dataset()->spatial_metadata();
         const auto pixel = this->screen_to_pixel( event->position() );
-        _database.update_highlighted_element_index( _dataset->spatial_metadata()->element_index( pixel ) );
+        _database.update_highlighted_element_index( spatial_metadata->element_index( pixel ) );
     }
     else
     {
@@ -405,7 +472,7 @@ void ImageViewer::leaveEvent( QEvent* event )
 
 QPointF ImageViewer::pixel_to_screen( vec2<uint32_t> pixel ) const
 {
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
     const auto x = ( pixel.x + 0.5 ) / dimensions.x;
     const auto y = ( pixel.y + 0.5 ) / dimensions.y;
 
@@ -420,7 +487,7 @@ vec2<uint32_t> ImageViewer::screen_to_pixel( QPointF screen ) const
     const auto x = ( screen.x() - _image_rectangle.left() ) / _image_rectangle.width();
     const auto y = ( screen.y() - _image_rectangle.top() ) / _image_rectangle.height();
 
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
+    const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
     const vec2<uint32_t> pixel {
         static_cast<uint32_t>( std::clamp( x * dimensions.x, 0.0, static_cast<double>( dimensions.x - 1 ) ) ),
         static_cast<uint32_t>( std::clamp( y * dimensions.y, 0.0, static_cast<double>( dimensions.y - 1 ) ) )
@@ -430,14 +497,173 @@ vec2<uint32_t> ImageViewer::screen_to_pixel( QPointF screen ) const
 
 void ImageViewer::reset_image_rectangle()
 {
-    const auto dimensions = _dataset->spatial_metadata()->dimensions;
-    const auto scaling = std::min(
+    const auto dataset      = _database.dataset();
+    const auto dimensions   = dataset->spatial_metadata()->dimensions;
+    const auto scaling      = std::min(
         ( this->width() - 20.0 ) / dimensions.x,
         ( this->height() - 20.0 ) / dimensions.y
     );
     _image_rectangle = QRectF { 0.0, 0.0, scaling * dimensions.x, scaling * dimensions.y };
     _image_rectangle.moveCenter( this->rect().center().toPointF() );
     this->update();
+}
+void ImageViewer::import_overlay()
+{
+    const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Overlay...", "", "*.png;*.jpg;*.tif", nullptr );
+    if( !filepath.isEmpty() )
+    {
+        if( const auto colormap = _colormap.lock() )
+        {
+            auto interpreter = py::interpreter {};
+
+            const auto dataset      = _database.dataset();
+            const auto dimensions   = dataset->spatial_metadata()->dimensions;
+
+            auto dataset_memoryview = std::optional<py::memoryview> {};
+            dataset->visit( [&dataset_memoryview, dimensions] ( const auto& dataset )
+            {
+                using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
+                dataset_memoryview = py::memoryview::from_buffer(
+                    dataset.intensities().data(),
+                    { dimensions.y, dimensions.x, dataset.channel_count() },
+                    { dimensions.x * dataset.channel_count() * sizeof( value_type ), dataset.channel_count() * sizeof( value_type ), sizeof( value_type ) }
+                );
+            } );
+            if( !dataset_memoryview.has_value() )
+            {
+                QMessageBox::critical( nullptr, "Import Overlay...", "Cannot import overlay for this dataset" );
+                return;
+            }
+
+            const auto colors_memoryview = py::memoryview::from_buffer(
+                reinterpret_cast<const float*>( colormap->colors().data() ),
+                { dimensions.y, dimensions.x, 4u },
+                { dimensions.x * 4 * sizeof( float ), 4 * sizeof( float ), sizeof( float ) }
+            );
+
+            using namespace py::literals;
+            auto locals = py::dict {
+                "filepath"_a = filepath.toStdWString(),
+                "dataset"_a = dataset_memoryview,
+                "colors"_a = colors_memoryview
+            };
+
+            try
+            {
+                py::exec( R"(
+try:
+    import cv2
+    import numpy as np
+
+    # --- 1. Preprocessing ---
+    print( "Computing reference image..." )
+    dataset = np.asarray( dataset, copy=False )
+    dataset = np.sum( dataset, axis=2 )
+    dataset = dataset - np.min( dataset )
+    dataset = dataset / np.max( dataset )
+
+    # img_ref = np.asarray( colors, copy=True )
+    # gray_ref = cv2.cvtColor( img_ref, cv2.COLOR_RGBA2GRAY )
+    # gray_ref = gray_ref - np.min( gray_ref )
+    # gray_ref = gray_ref / np.max( gray_ref )
+    gray_ref = dataset
+    gray_ref = ( gray_ref * 255 ).astype( np.uint8 )
+    print( f"Overlay: {gray_ref.shape}, {gray_ref.dtype}, {np.min( gray_ref )} - {np.max( gray_ref )}" )
+
+    img_ovl = cv2.imread( filepath, cv2.IMREAD_UNCHANGED )
+    gray_ovl = cv2.cvtColor( img_ovl, cv2.COLOR_BGR2GRAY ).astype( np.float32 )
+    gray_ovl = gray_ovl - np.min( gray_ovl )
+    gray_ovl = gray_ovl / np.max( gray_ovl )
+    gray_ovl = ( gray_ovl * 255 ).astype( np.uint8 )
+    print( f"Overlay: {gray_ovl.shape}, {gray_ovl.dtype}, {np.min( gray_ovl )} - {np.max( gray_ovl )}" )
+
+    hist_ref = cv2.calcHist( [gray_ref], [0], None, [256], [0,256] )
+    hist_ovl = cv2.calcHist( [gray_ovl], [0], None, [256], [0,256] )
+    
+    score_original = cv2.compareHist( hist_ref, hist_ovl, cv2.HISTCMP_CORREL )
+    score_inverted = cv2.compareHist( hist_ref, hist_ovl[::-1], cv2.HISTCMP_CORREL )
+    print( f"Histogram matching scores: original={score_original}, inverted={score_inverted}" )
+
+    if score_inverted > score_original:
+        print( "Inverting overlay image for better matching..." )
+        gray_ovl = cv2.bitwise_not( gray_ovl )
+
+    # --- 2. SIFT Feature Detection ---
+    print( "Detecting SIFT features..." )
+    sift = cv2.SIFT_create()
+    
+    # Detect keypoints and compute descriptors
+    kp_ref, des_ref = sift.detectAndCompute( gray_ref, None )
+    kp_ovl, des_ovl = sift.detectAndCompute( gray_ovl, None )
+    
+    if des_ref is None or des_ovl is None:
+        raise ValueError( "Could not find features in one of the images." )
+
+    # --- 3. Feature Matching (FLANN) ---
+    print( "Matching features..." )
+    # FLANN parameters for SIFT
+    FLANN_INDEX_KDTREE = 1
+    index_params = dict( algorithm=FLANN_INDEX_KDTREE, trees=5 )
+    search_params = dict( checks=50 )
+    
+    flann = cv2.FlannBasedMatcher( index_params, search_params )
+    
+    # k=2 for Ratio Test
+    matches = flann.knnMatch( des_ovl, des_ref, k=2 )
+
+    # --- 4. Lowe's Ratio Test ---
+    # Keep only matches where the best match is significantly better than the second best
+    good_matches = []
+    ratio_thresh = 0.7  # Typically 0.7 or 0.75
+    for m, n in matches:
+        if m.distance < ratio_thresh * n.distance:
+            good_matches.append( m )
+            
+    print( f"Good matches found: {len( good_matches )}" )
+
+    if len( good_matches ) < 4:
+        raise ValueError("Not enough good matches to compute Homography.")
+
+    # --- 5. Compute Homography (RANSAC) ---
+    # Extract coordinates from the keypoints
+    src_pts = np.float32( [kp_ovl[m.queryIdx].pt for m in good_matches] ).reshape( -1, 1, 2 )
+    dst_pts = np.float32( [kp_ref[m.trainIdx].pt for m in good_matches] ).reshape( -1, 1, 2 )
+
+    # Calculate Homography
+    M, mask = cv2.findHomography( src_pts, dst_pts, cv2.RANSAC, 5.0 )
+    # M, mask = cv2.estimateAffine2D( src_pts, dst_pts, method=cv2.RANSAC )
+
+    if M is None:
+        raise ValueError( "Homography calculation failed." )
+
+    # --- 6. Apply Warping ---
+    aligned = cv2.warpPerspective( img_ovl, M, ( gray_ref.shape[1], gray_ref.shape[0] ) )
+    # aligned = cv2.warpAffine( img_ovl, M, ( gray_ref.shape[1], gray_ref.shape[0] ) )
+    print( f"Aligned: {aligned.shape}, {aligned.dtype}, {np.min( aligned )} - {np.max( aligned )}" )
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+            }
+            catch( py::error_already_set& error )
+            {
+                locals["error"] = error.what();
+            }
+
+            if( locals.contains( "error" ) )
+            {
+                const auto error = locals["error"].cast<std::string>();
+                Console::error( std::format( "Python error during overlay import: {}", error ) );
+                QMessageBox::critical( nullptr, "Import Overlay...", "Failed to import overlay", QMessageBox::Ok );
+            }
+            else
+            {
+                const auto aligned = locals["aligned"].cast<py::array>();
+                _overlay_image = Tensor::with_rank<3>::with_type<uint8_t> { { dimensions.x, dimensions.y, 3 }, 0 };
+                std::memcpy( _overlay_image.data(), aligned.data(), _overlay_image.bytes() );
+                this->update();
+            }
+        }
+    }
 }
 void ImageViewer::create_screenshot( uint32_t scaling ) const
 {
@@ -459,17 +685,32 @@ void ImageViewer::create_screenshot( uint32_t scaling ) const
         if( auto colormap = _colormap.lock() )
         {
             const auto& colors = colormap->colors();
-            const auto dimensions = _dataset->spatial_metadata()->dimensions;
+            const auto dimensions = _database.dataset()->spatial_metadata()->dimensions;
             const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
             painter.setOpacity( _image_opacity );
             painter.drawImage( image.rect(), image );
         }
 
-        // Render segmentation colors
-        const auto& segmentation_colors = _database.segmentation()->element_colors();
-        const auto segmentation_image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
-        painter.setOpacity( _segmentation_opacity );
-        painter.drawImage( image.rect(), segmentation_image );
+        // Render segmentation colors or false-coloring
+        if( _coloring == ColoringMode::eSegmentation )
+        {
+            // Render segmentation colors
+            const auto segmentation = _database.segmentation();
+            const auto& segmentation_colors = segmentation->element_colors();
+            const auto image = QImage { reinterpret_cast<const uchar*>( segmentation_colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+            painter.setOpacity( _segmentation_opacity );
+            painter.drawImage( image.rect(), image );
+        }
+        else if( _coloring == ColoringMode::eFalseColoring )
+        {
+            if( const auto colormap = _database.colormap_embedding() )
+            {
+                const auto& colors = colormap->colors();
+                const auto image = QImage { reinterpret_cast<const uchar*>( colors.data() ), static_cast<int>( dimensions.x ), static_cast<int>( dimensions.y ), QImage::Format_RGBA32FPx4 };
+                painter.setOpacity( _segmentation_opacity );
+                painter.drawImage( image.rect(), image );
+            }
+        }
 
         if( filepath == "clipboard" )
         {

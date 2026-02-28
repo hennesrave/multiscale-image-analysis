@@ -132,6 +132,18 @@
     <ClCompile Include="source\segmentation_creator.cpp">
       <Filter>Source Files\application\widgets</Filter>
     </ClCompile>
+    <ClCompile Include="source\dataset_exporter.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\embedding.cpp">
+      <Filter>Source Files\database</Filter>
+    </ClCompile>
+    <ClCompile Include="source\dataset_alignment_dialog.cpp">
+      <Filter>Source Files\application\widgets</Filter>
+    </ClCompile>
+    <ClCompile Include="source\channel_glyphs_viewer.cpp">
+      <Filter>Source Files\application\viewer</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="source\configuration.hpp">
@@ -228,6 +240,18 @@
     </QtMoc>
     <QtMoc Include="source\segmentation_creator.hpp">
       <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\dataset_exporter.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\embedding.hpp">
+      <Filter>Header Files\database</Filter>
+    </QtMoc>
+    <QtMoc Include="source\dataset_alignment_dialog.hpp">
+      <Filter>Header Files\application\widgets</Filter>
+    </QtMoc>
+    <QtMoc Include="source\channel_glyphs_viewer.hpp">
+      <Filter>Header Files\application\viewer</Filter>
     </QtMoc>
   </ItemGroup>
   <ItemGroup>

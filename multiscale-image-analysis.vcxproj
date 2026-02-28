@@ -23,13 +23,13 @@
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>true</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'" Label="Configuration">
     <ConfigurationType>Application</ConfigurationType>
     <UseDebugLibraries>false</UseDebugLibraries>
-    <PlatformToolset>v143</PlatformToolset>
+    <PlatformToolset>v145</PlatformToolset>
     <WholeProgramOptimization>true</WholeProgramOptimization>
     <CharacterSet>Unicode</CharacterSet>
   </PropertyGroup>
@@ -105,12 +105,16 @@
   <ItemGroup>
     <ClCompile Include="source\boxplot.cpp" />
     <ClCompile Include="source\boxplot_viewer.cpp" />
+    <ClCompile Include="source\channel_glyphs_viewer.cpp" />
     <ClCompile Include="source\colormap.cpp" />
     <ClCompile Include="source\colormap_viewer.cpp" />
     <ClCompile Include="source\console.cpp" />
     <ClCompile Include="source\database.cpp" />
     <ClCompile Include="source\dataset.cpp" />
+    <ClCompile Include="source\dataset_alignment_dialog.cpp" />
+    <ClCompile Include="source\dataset_exporter.cpp" />
     <ClCompile Include="source\dataset_importer.cpp" />
+    <ClCompile Include="source\embedding.cpp" />
     <ClCompile Include="source\embedding_creator.cpp" />
     <ClCompile Include="source\embedding_viewer.cpp" />
     <ClCompile Include="source\feature.cpp" />
@@ -152,12 +156,16 @@
     <QtMoc Include="source\workspace.hpp" />
     <QtMoc Include="source\boxplot_viewer.hpp" />
     <QtMoc Include="source\boxplot.hpp" />
+    <QtMoc Include="source\channel_glyphs_viewer.hpp" />
     <ClInclude Include="source\configuration.hpp" />
     <ClInclude Include="source\console.hpp" />
+    <QtMoc Include="source\dataset_exporter.hpp" />
+    <QtMoc Include="source\dataset_alignment_dialog.hpp" />
     <ClInclude Include="source\dataset_importer.hpp" />
     <QtMoc Include="source\histogram.hpp" />
     <QtMoc Include="source\plotting_widget.hpp" />
     <QtMoc Include="source\feature_manager.hpp" />
+    <QtMoc Include="source\embedding.hpp" />
     <ClInclude Include="source\filestream.hpp" />
     <ClInclude Include="source\python.hpp" />
     <QtMoc Include="source\segmentation.hpp" />

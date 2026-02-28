@@ -2,7 +2,6 @@
 
 #include "embedding_creator.hpp"
 #include "renderdoc_app.h"
-#include "segmentation_manager.hpp"
 
 #include <qactiongroup.h>
 #include <qapplication.h>
@@ -10,13 +9,11 @@
 #include <qclipboard.h>
 #include <qevent.h>
 #include <qfiledialog.h>
-#include <qlabel.h>
 #include <qmessagebox.h>
 #include <qmenu.h>
 #include <qmimedata.h>
 #include <qopenglversionfunctionsfactory.h>
 #include <qpainter.h>
-#include <qwidgetaction.h>
 
 #define NOMINMAX
 #include <windows.h>
@@ -53,12 +50,19 @@ EmbeddingRenderer::EmbeddingRenderer()
     framebuffer_format.setInternalTextureFormat( GL_RGBA32F );
     _framebuffer.reset( new QOpenGLFramebufferObject( QSize { _texture_size, _texture_size }, framebuffer_format ) );
 
+    float border_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    _functions->glBindTexture( GL_TEXTURE_2D, _framebuffer->texture() );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color );
+
     _shader_programs.render_points.create();
     _shader_programs.render_points.addShaderFromSourceCode( QOpenGLShader::Vertex, R"(
         #version 450
         
         layout( location = 0 ) uniform mat4 projection_matrix;
         layout( location = 1 ) uniform float point_size;
+        layout( location = 2 ) uniform bool use_point_colors;
 
         layout( binding = 0 ) restrict readonly buffer PointPositionsBuffer
         {
@@ -76,6 +80,10 @@ EmbeddingRenderer::EmbeddingRenderer()
         {
             vec4 segmentation_colors[];
         };
+        layout( binding = 4 ) restrict readonly buffer PointColorsBuffer
+        {
+            vec4 point_colors[];
+        };
 
         layout( location = 0 ) out vec4 color_output;
 
@@ -84,9 +92,16 @@ EmbeddingRenderer::EmbeddingRenderer()
             gl_Position     = projection_matrix * vec4( point_positions[gl_VertexID], 0.0, 1.0 );
             gl_PointSize    = point_size;
 
-            const uint point_index      = point_indices[gl_VertexID];
-            const uint segment_number   = segmentation_numbers[point_index];
-            color_output                = segmentation_colors[segment_number];
+            if( use_point_colors ) 
+            {
+                color_output = point_colors[gl_VertexID];
+            }
+            else
+            {
+                const uint point_index      = point_indices[gl_VertexID];
+                const uint segment_number   = segmentation_numbers[point_index];
+                color_output                = segmentation_colors[segment_number];
+            }
         }
     )" );
     _shader_programs.render_points.addShaderFromSourceCode( QOpenGLShader::Fragment, R"(
@@ -179,6 +194,7 @@ EmbeddingRenderer::EmbeddingRenderer()
             {
                 const vec2 position = ( projection_matrix * vec4( point_positions[index], 0.0, 1.0 ) ).xy;
                 const vec2 texture_position = ( position + 1.0 ) / 2.0;
+
                 if( texture( selection_texture, texture_position ).x != 0.0 )
                 {
                     segmentation_numbers[point_indices[index]] = segment_number;
@@ -198,6 +214,7 @@ EmbeddingRenderer::EmbeddingRenderer()
     _buffers.point_indices.create();
     _buffers.segmentation_numbers.create();
     _buffers.segment_colors.create();
+    _buffers.point_colors.create();
     _buffers.selection_polygon.create();
 }
 
@@ -214,6 +231,13 @@ void EmbeddingRenderer::update_texture_size( int texture_size )
     framebuffer_format.setAttachment( QOpenGLFramebufferObject::NoAttachment );
     framebuffer_format.setInternalTextureFormat( GL_RGBA32F );
     _framebuffer.reset( new QOpenGLFramebufferObject( QSize { _texture_size, _texture_size }, framebuffer_format ) );
+
+    float border_color[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+    _functions->glBindTexture( GL_TEXTURE_2D, _framebuffer->texture() );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER );
+    _functions->glTexParameterfv( GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, border_color );
+
     _context.doneCurrent();
 }
 void EmbeddingRenderer::update_points( const std::vector<vec2<float>>& point_positions, const std::vector<uint32_t>& point_indices )
@@ -240,8 +264,17 @@ void EmbeddingRenderer::update_segmentation( Array<uint32_t> segmentation_number
 
     _context.doneCurrent();
 }
+void EmbeddingRenderer::update_point_colors( Array<vec4<float>> point_colors )
+{
+    _context.makeCurrent( &_surface );
 
-QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat point_size )
+    _buffers.point_colors.bind();
+    _buffers.point_colors.allocate( point_colors.data(), static_cast<int>( point_colors.size() * sizeof( vec4<float> ) ) );
+
+    _context.doneCurrent();
+}
+
+QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat point_size, bool use_point_colors )
 {
     _context.makeCurrent( &_surface );
 
@@ -264,11 +297,16 @@ QImage EmbeddingRenderer::render( const QMatrix4x4& projection_matrix, GLfloat p
     _shader_programs.render_points.bind();
     _shader_programs.render_points.setUniformValue( "projection_matrix", projection_matrix );
     _shader_programs.render_points.setUniformValue( "point_size", point_size );
+    _shader_programs.render_points.setUniformValue( "use_point_colors", use_point_colors );
 
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 0, _buffers.point_positions.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 1, _buffers.point_indices.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 2, _buffers.segmentation_numbers.bufferId() );
     _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 3, _buffers.segment_colors.bufferId() );
+    if( use_point_colors )
+    {
+        _functions->glBindBufferBase( GL_SHADER_STORAGE_BUFFER, 4, _buffers.point_colors.bufferId() );
+    }
 
     _functions->glEnable( GL_PROGRAM_POINT_SIZE );
     _functions->glEnable( GL_BLEND );
@@ -361,10 +399,24 @@ EmbeddingViewer::EmbeddingViewer( Database& database ) : _database { database },
     this->setMouseTracking( true );
 
     const auto segmentation = _database.segmentation();
-    QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::segmentation_changed );
-    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::segmentation_changed );
-    this->segmentation_changed();
+    QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, this, &EmbeddingViewer::update_coloring );
+    QObject::connect( segmentation.get(), &Segmentation::element_colors_changed, this, &EmbeddingViewer::update_coloring );
 
+    const auto colormap_embedding = _database.colormap_embedding();
+    QObject::connect( colormap_embedding.get(), &ColormapEmbedding::colors_changed, this, &EmbeddingViewer::update_coloring );
+
+    this->update_coloring();
+
+    QObject::connect( &_database, &Database::embedding_changed, this, [this] ()
+    {
+        if( const auto embedding = _database.embedding() )
+        {
+            _renderer->update_points( embedding->coordinates(), embedding->indices() );
+        }
+
+        _scatterplot_image_valid = false;
+        this->update();
+    } );
     QObject::connect( &_database, &Database::highlighted_element_index_changed, this, qOverload<>( &QWidget::update ) );
 }
 
@@ -384,11 +436,25 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     content_rectangle.setSize( QSize { extent, extent } );
     content_rectangle.moveCenter( center );
 
+    const auto embedding = _database.embedding();
+    if( !embedding )
+    {
+        painter.setPen( Qt::black );
+        painter.setBrush( Qt::NoBrush );
+        painter.drawRect( content_rectangle );
+        painter.drawText( content_rectangle, Qt::AlignCenter, "Right-click > Embedding > Create" );
+        return;
+    }
+
+    const auto& indices = embedding->indices();
+    const auto& coordinates = embedding->coordinates();
+
     // Render scatterplot
     if( !_scatterplot_image_valid )
     {
         const auto adjusted_point_size = ( _point_size * std::sqrt( _projection_matrix( 0, 0 ) ) ) / 72.0 * QGuiApplication::primaryScreen()->physicalDotsPerInch() / ( static_cast<double>( extent ) / _renderer->texture_size() );
-        _scatterplot_image = _renderer->render( _projection_matrix, adjusted_point_size );
+        const auto user_point_colors = _coloring == ColoringMode::eFalseColoring;
+        _scatterplot_image = _renderer->render( _projection_matrix, adjusted_point_size, user_point_colors );
         _scatterplot_image_valid = true;
     }
 
@@ -399,15 +465,28 @@ void EmbeddingViewer::paintEvent( QPaintEvent* event )
     // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
-        const auto iterator = std::lower_bound( _point_indices.begin(), _point_indices.end(), *element_index );
-        if( iterator != _point_indices.end() && *iterator == *element_index )
+        const auto iterator = std::lower_bound( indices.begin(), indices.end(), *element_index );
+        if( iterator != indices.end() && *iterator == *element_index )
         {
-            const auto position = _point_positions[std::distance( _point_indices.begin(), iterator )];
+            const auto position = coordinates[std::distance( indices.begin(), iterator )];
             const auto screen = this->world_to_screen( QPointF { position.x, position.y } );
 
-            const auto segment_number = _database.segmentation()->segment_number( *element_index );
-            const auto segment = _database.segmentation()->segment( segment_number );
-            const auto color = segment_number == 0 ? QColor { 230, 230, 230, 255 } : segment->color().qcolor();
+            auto color = QColor { 230, 230, 230, 255 };
+
+            if( _coloring == ColoringMode::eSegmentation )
+            {
+                const auto segment_number   = _database.segmentation()->segment_number( *element_index );
+                const auto segment          = _database.segmentation()->segment( segment_number );
+                color                       = segment_number == 0 ? QColor { 230, 230, 230, 255 } : segment->color().qcolor();
+            }
+            else if( _coloring == ColoringMode::eFalseColoring )
+            {
+                if( const auto colormap = _database.colormap_embedding() )
+                {
+                    const auto& colors = colormap->colors();
+                    color = colors[*element_index].qcolor();
+                }
+            }
 
             const auto radius = std::sqrt( _projection_matrix( 0, 0 ) ) * _point_size + 3.0;
 
@@ -478,8 +557,57 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
             {
                 auto context_menu = QMenu {};
 
-                _database.populate_segmentation_menu( context_menu );
+                _database.populate_segmentation_menu( context_menu, true );
                 context_menu.addSeparator();
+
+                auto embedding_menu = context_menu.addMenu( "Embedding" );
+
+                embedding_menu->addAction( "Create", [this]
+                {
+                    auto embedding_creator = EmbeddingCreator {};
+                    if( embedding_creator.exec() == QDialog::Accepted )
+                    {
+                        this->import_embedding( embedding_creator.filepath() );
+
+                        if( auto embedding = _database.embedding() )
+                        {
+                            embedding->update_model( embedding_creator.model() );
+                        }
+                    }
+                } );
+                embedding_menu->addAction( "Import", [this]
+                {
+                    auto selected_filter = QString { "*.mia" };
+                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter );
+                    this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
+                } );
+
+                if( _database.dataset()->spatial_metadata() )
+                {
+                    embedding_menu->addAction( "Channels (experimental)", this, &EmbeddingViewer::request_channels_embedding );
+                }
+
+                auto coloring_menu = context_menu.addMenu( "Coloring" );
+                auto coloring_action_group = new QActionGroup { coloring_menu };
+                coloring_action_group->setExclusive( true );
+
+                const auto coloring_options = std::vector<std::pair<const char*, ColoringMode>> {
+                    { "Segmentation", ColoringMode::eSegmentation },
+                    { "False-coloring", ColoringMode::eFalseColoring }
+                };
+
+                for( const auto [label, coloring] : coloring_options )
+                {
+                    const auto action = coloring_menu->addAction( label, [this, coloring]
+                    {
+                        _coloring = coloring;
+                        this->update_coloring();
+                    } );
+
+                    action->setCheckable( true );
+                    action->setChecked( _coloring == coloring );
+                    coloring_action_group->addAction( action );
+                }
 
                 auto point_size_menu = context_menu.addMenu( "Point Size" );
                 auto point_size_action_group = new QActionGroup { point_size_menu };
@@ -512,18 +640,6 @@ void EmbeddingViewer::mouseReleaseEvent( QMouseEvent* event )
                 }
 
                 context_menu.addAction( "Reset View", [this] { this->reset_projection_matrix(); } );
-
-                context_menu.addSeparator();
-                context_menu.addAction( "Create Embedding", [this]
-                {
-                    this->import_embedding( EmbeddingCreator::execute( _database ) );
-                } );
-                context_menu.addAction( "Import Embedding", [this]
-                {
-                    auto selected_filter = QString { "*.mia" };
-                    const auto filepath = QFileDialog::getOpenFileName( this, "Import Embedding...", "", "*.csv;;*.mia", &selected_filter );
-                    this->import_embedding( std::filesystem::path { filepath.toStdWString() } );
-                } );
 
                 auto screenshot_menu = context_menu.addMenu( "Screenshot" );
                 screenshot_menu->addAction( "1x Resolution", [this] { this->create_screenshot( 1 ); } );
@@ -571,16 +687,20 @@ void EmbeddingViewer::mouseMoveEvent( QMouseEvent* event )
         }
     }
 
-    if( _search_tree )
+    if( const auto embedding = _database.embedding() )
     {
+        const auto& indices = embedding->indices();
+        const auto& coordinates = embedding->coordinates();
+        const auto& search_tree = embedding->search_tree();
+
         const auto world = this->screen_to_world( event->position() );
-        const auto nearest_neighbor_index = _search_tree->nearest_neighbor( vec2<float> { static_cast<float>( world.x() ), static_cast<float>( world.y() ) } );
-        const auto nearest_neighbor_world = _point_positions[nearest_neighbor_index];
+        const auto nearest_neighbor_index = search_tree.nearest_neighbor( vec2<float> { static_cast<float>( world.x() ), static_cast<float>( world.y() ) } );
+        const auto nearest_neighbor_world = coordinates[nearest_neighbor_index];
         const auto nearest_neighbor_screen = this->world_to_screen( QPointF { nearest_neighbor_world.x, nearest_neighbor_world.y } );
 
         if( QLineF { event->position(), nearest_neighbor_screen }.length() <= std::sqrt( _projection_matrix( 0, 0 ) ) * _point_size + 5.0 )
         {
-            _database.update_highlighted_element_index( _point_indices[nearest_neighbor_index] );
+            _database.update_highlighted_element_index( indices[nearest_neighbor_index] );
         }
         else
         {
@@ -631,17 +751,43 @@ QPointF EmbeddingViewer::screen_to_world( const QPointF& screen ) const
     return QPointF { this->screen_to_world_x( screen.x() ), this->screen_to_world_y( screen.y() ) };
 }
 
-void EmbeddingViewer::segmentation_changed()
+void EmbeddingViewer::update_coloring()
 {
-    const auto segmentation = _database.segmentation();
-    auto segment_colors = Array<vec4<float>>::allocate( segmentation->segment_count() );
-    segment_colors[0] = vec4<float> { 0.9f, 0.9f, 0.9f, 1.0f };
-    for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+    if( _coloring == ColoringMode::eSegmentation )
     {
-        segment_colors[segment_number] = segmentation->segment( segment_number )->color();
+        const auto segmentation = _database.segmentation();
+        auto segment_colors = Array<vec4<float>>::allocate( segmentation->segment_count() );
+        segment_colors[0] = vec4<float> { 0.9f, 0.9f, 0.9f, 1.0f };
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            segment_colors[segment_number] = segmentation->segment( segment_number )->color();
+        }
+
+        _renderer->update_segmentation( _database.segmentation()->segment_numbers(), std::move( segment_colors ) );
+    }
+    else if( _coloring == ColoringMode::eFalseColoring )
+    {
+        const auto embedding = _database.embedding();
+        const auto colormap = _database.colormap_embedding();
+
+        if( !embedding || !colormap )
+        {
+            return;
+        }
+
+        const auto& indices = embedding->indices();
+        const auto& colors = colormap->colors();
+
+        auto point_colors = Array<vec4<float>>::allocate( indices.size() );
+        for( size_t i = 0; i < point_colors.size(); ++i )
+        {
+            const auto color = colors[indices[i]];
+            point_colors[i] = vec4<float> { color.x, color.y, color.z, 1.0f };
+        }
+
+        _renderer->update_point_colors( std::move( point_colors ) );
     }
 
-    _renderer->update_segmentation( _database.segmentation()->segment_numbers(), segment_colors );
     _scatterplot_image_valid = false;
     this->update();
 }
@@ -661,6 +807,10 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     }
 
     const auto extension = filepath.extension();
+    auto indices        = std::vector<uint32_t> {};
+    auto coordinates    = std::vector<vec2<float>> {};
+    auto model          = py::object {};
+
     if( extension == ".csv" )
     {
         auto stream = std::ifstream { filepath };
@@ -669,9 +819,6 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
             QMessageBox::critical( this, "Import Embedding...", "Failed to open file" );
             return;
         }
-
-        _point_indices.clear();
-        _point_positions.clear();
 
         while( stream )
         {
@@ -688,8 +835,8 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
             ( stringstream >> x ).ignore( 1 );
             ( stringstream >> y ).ignore( 1 );
 
-            _point_indices.push_back( index );
-            _point_positions.push_back( vec2<float> { x, y } );
+            indices.push_back( index );
+            coordinates.push_back( vec2<float> { x, y } );
         }
     }
     else if( extension == ".mia" )
@@ -709,11 +856,17 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         }
 
         const auto element_count = stream.read<uint32_t>();
-        _point_indices.resize( element_count );
-        _point_positions.resize( element_count );
+        indices.resize( element_count );
+        coordinates.resize( element_count );
 
-        stream.read( _point_indices.data(), element_count * sizeof( uint32_t ) );
-        stream.read( _point_positions.data(), element_count * sizeof( vec2<float> ) );
+        stream.read( indices.data(), element_count * sizeof( uint32_t ) );
+        stream.read( coordinates.data(), element_count * sizeof( vec2<float> ) );
+
+        if( stream.application_version() >= config::ApplicationVersion { 1, 0, 4 } && !stream.finished() )
+        {
+            Console::info( "Importing embedding model..." );
+            stream.read( model );
+        }
     }
     else
     {
@@ -721,10 +874,12 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
         QMessageBox::critical( this, "Import Embedding...", "Unsupported file format" );
     }
 
-    _search_tree.reset( new SearchTree { _point_positions } );
-    _renderer->update_points( _point_positions, _point_indices );
-    _scatterplot_image_valid = false;
-    this->update();
+    if( !indices.empty() && !coordinates.empty() )
+    {
+        auto embedding = QSharedPointer<Embedding>::create( indices, coordinates );
+        embedding->update_model( model );
+        _database.update_embedding( embedding );
+    }
 }
 void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
 {
@@ -737,7 +892,8 @@ void EmbeddingViewer::create_screenshot( uint32_t scaling ) const
         _renderer->update_texture_size( scaling * EmbeddingRenderer::default_texture_size );
         const auto extent = std::min( this->width(), this->height() ) - 20;
         const auto adjusted_point_size = ( _point_size * std::sqrt( _projection_matrix( 0, 0 ) ) ) / 72.0 * QGuiApplication::primaryScreen()->physicalDotsPerInch() / ( static_cast<double>( extent ) / _renderer->texture_size() );
-        const auto image = _renderer->render( _projection_matrix, adjusted_point_size );
+        const auto user_point_colors = _coloring == ColoringMode::eFalseColoring;
+        const auto image = _renderer->render( _projection_matrix, adjusted_point_size, user_point_colors );
         _renderer->update_texture_size( EmbeddingRenderer::default_texture_size );
 
         if( filepath == "clipboard" )

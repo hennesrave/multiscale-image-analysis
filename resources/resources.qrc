@@ -8,5 +8,6 @@
         <file>delete.svg</file>
         <file>add.svg</file>
         <file>settings.svg</file>
+        <file>question.svg</file>
     </qresource>
 </RCC>

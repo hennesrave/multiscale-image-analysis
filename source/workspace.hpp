@@ -4,6 +4,7 @@
 class Database;
 
 class BoxplotViewer;
+class ChannelGlyphsViewer;
 class ColormapViewer;
 class EmbeddingViewer;
 class HistogramViewer;
@@ -16,10 +17,16 @@ class Workspace : public QWidget
 public:
     Workspace( Database& database );
 
+signals:
+    void closed() const;
+
 private:
+    void closeEvent( QCloseEvent* event ) override;
+
     Database& _database;
 
     BoxplotViewer* _boxplot_viewer = nullptr;
+    ChannelGlyphsViewer* _channel_glyphs_viewer = nullptr;
     ColormapViewer* _colormap_viewer = nullptr;
     EmbeddingViewer* _embedding_viewer = nullptr;
     HistogramViewer* _histogram_viewer = nullptr;

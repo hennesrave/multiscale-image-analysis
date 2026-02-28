@@ -33,9 +33,17 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     {
         return DatasetImporter::from_single_particle_csv( filepath );
     }
+    else if( linestring.find( ";;;;Sample 1" ) != std::string::npos )
+    {
+        return DatasetImporter::from_la_icp_ms( filepath );
+    }
     else if( std::regex_search( filename.string(), std::regex { R"(line_\d+\.csv)" } ) && linestring.find( "Timestamp" ) == 0 )
     {
         return DatasetImporter::from_laser_lines( filepath );
+    }
+    else if( std::regex_search( filename.string(), std::regex { R"([A-z]+?\d+?\.csv)" } ) )
+    {
+        return DatasetImporter::from_matrix( filepath );
     }
 
     QMessageBox::critical( nullptr, "", "Unsupported file format" );
@@ -231,6 +239,28 @@ QSharedPointer<Dataset> DatasetImporter::from_hdf5( const std::filesystem::path&
 
     return nullptr;
 }
+QSharedPointer<Dataset> DatasetImporter::from_matrix( const std::filesystem::path& base_filepath )
+{
+    const auto directory = base_filepath.parent_path();
+    for( const auto& entry : std::filesystem::directory_iterator { directory } )
+    {
+        if( !entry.is_regular_file() )
+        {
+            continue;
+        }
+
+        const auto filename = entry.path().filename().string();
+        const auto filename_regex = std::regex { R"(^(.+?(\d+?))\.csv$)" };
+        auto matches = std::smatch {};
+        if( !std::regex_match( filename, matches, filename_regex ) )
+        {
+            continue;
+        }
+        Console::info( std::format( "{} {}", matches[1].str(), matches[2].str() ) );
+    }
+
+    return nullptr;
+}
 QSharedPointer<Dataset> DatasetImporter::from_mia( const std::filesystem::path& filepath )
 {
     auto stream = MIAFileStream { filepath, std::ios::in };
@@ -241,6 +271,108 @@ QSharedPointer<Dataset> DatasetImporter::from_mia( const std::filesystem::path& 
         return nullptr;
     }
     return stream.read<QSharedPointer<Dataset>>();
+}
+QSharedPointer<Dataset> DatasetImporter::from_la_icp_ms( const std::filesystem::path& filepath )
+{
+    auto filestream     = std::ifstream { filepath };
+    auto linestring     = std::string {};
+
+    // Ignore the first two lines
+    std::getline( filestream, linestring, '\n' );
+    std::getline( filestream, linestring, '\n' );
+
+    auto dimensions = vec2<uint32_t> { 0, 0 };
+    for( const auto character : linestring )
+    {
+        if( character == ';' )
+        {
+            dimensions.x++;
+        }
+    }
+    dimensions.x -= 4;
+
+    auto identifiers    = std::vector<std::string> {};
+    auto positions      = std::vector<double> {};
+
+    auto intensities = std::vector<double> {};
+    while( std::getline( filestream, linestring, '\n' ) )
+    {
+        if( linestring.empty() )
+        {
+            continue;
+        }
+
+        auto linestream     = std::stringstream { linestring };
+        auto tokenstring    = std::string {};
+
+        std::getline( linestream, tokenstring, ';' ); // Ignore "MainRuns"
+
+        // Read second coordinate
+        std::getline( linestream, tokenstring, ';' );
+        dimensions.y = std::max( dimensions.y, std::stoi( tokenstring ) + 1u );
+
+        // Read identifier
+        std::getline( linestream, tokenstring, ';' );
+        const auto identifier = std::string { tokenstring.begin(), tokenstring.begin() + tokenstring.find( ' ' ) };
+        if( identifiers.empty() || identifiers.back() != identifier )
+        {
+            identifiers.push_back( identifier );
+            positions.push_back( std::stod( identifier ) );
+        }
+
+        // Read "Y" or "Time"
+        std::getline( linestream, tokenstring, ';' );
+        if( tokenstring != "Y" )
+        {
+            continue;
+        }
+
+        // Read intensities
+        while( std::getline( linestream, tokenstring, ';' ) )
+        {
+            if( tokenstring.empty() )
+            {
+                intensities.push_back( 0.0 );
+            }
+            else
+            {
+                intensities.push_back( std::stod( tokenstring ) );
+            }
+        }
+    }
+
+    auto spatial_metadata = std::unique_ptr<Dataset::SpatialMetadata> { new Dataset::SpatialMetadata {
+        dimensions.x, dimensions.y
+    } };
+
+    auto matrix = Matrix<double>::allocate( {
+        dimensions.x * dimensions.y,
+        positions.size()
+    } );
+
+    for( size_t value_index = 0; value_index < intensities.size(); ++value_index )
+    {
+        const auto x = static_cast<uint32_t>( value_index % dimensions.x );
+        const auto y = static_cast<uint32_t>( ( value_index / dimensions.x ) % dimensions.y );
+        const auto channel_index = static_cast<uint32_t>( value_index / ( dimensions.x * dimensions.y ) );
+
+        const auto element_index = spatial_metadata->element_index( vec2<uint32_t> { x, y } );
+        matrix.update_value( { element_index, channel_index }, intensities[value_index] );
+    }
+
+    auto channel_identifiers = Array<QString> { identifiers.size(), QString {} };
+    auto channel_positions = Array<double>::allocate( positions.size() );
+    for( uint32_t channel_index = 0; channel_index < positions.size(); ++channel_index )
+    {
+        channel_identifiers[channel_index] = QString::fromStdString( identifiers[channel_index] );
+        channel_positions[channel_index] = positions[channel_index];
+    }
+
+    auto dataset = new TensorDataset<double> { std::move( matrix ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_spatial_metadata( std::move( spatial_metadata ) );
+
+    return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem::path& filepath )
 {
@@ -556,9 +688,9 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
 
             for( auto spectrum_iterator = values.begin(); spectrum_iterator != values.end(); spectrum_iterator += spectrum_size )
             {
-                const auto header = reinterpret_cast<const Header*>( spectrum_iterator._Ptr );
+                const auto header = reinterpret_cast<const Header*>( &( *spectrum_iterator ) );
                 const auto elapsed_time = static_cast<uint64_t>( header->acquisition_number ) * acquisition_period;
-                const auto input_spectrum = reinterpret_cast<const Result*>( spectrum_iterator._Ptr + sizeof( Header ) );
+                const auto input_spectrum = reinterpret_cast<const Result*>( &( *spectrum_iterator ) + sizeof( Header ) );
 
                 if( elapsed_time < laserspots[current_laserspot_index].elapsed_time )
                 {
@@ -673,7 +805,7 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem
         std::getline( filestream, linestring, '\n' );   // Direction of ablation
         const auto direction_of_ablation = linestring.substr( linestring.find_first_of( ',' ) + 1 );
 
-        if( direction_of_ablation != "0,Left to Right" )
+        if( direction_of_ablation.find( "Left to Right" ) == std::string::npos )
         {
             Console::error( "Unsupported direction of ablation: " + direction_of_ablation );
             QMessageBox::critical( nullptr, "", "Unsupported direction of ablation", QMessageBox::Ok );
@@ -954,7 +1086,7 @@ QSharedPointer<Dataset> DatasetImporter::from_zarr( const std::filesystem::path&
         auto hypercube = static_cast<py::array>( zarr_dataset["hypercube"][py::make_tuple()] );
         auto wavenumbers = static_cast<py::array>( zarr_dataset["wvnm"][py::make_tuple()].attr( "astype" )( py::dtype::of<double>() ) );
 
-        if( !hypercube.dtype().is( py::dtype::of<float>() ) )
+        if( !( hypercube.dtype().kind() == 'f' && hypercube.dtype().itemsize() == sizeof( float ) ) )
         {
             QMessageBox::critical( nullptr, "", "Unexpected hypercube data type: " + QString::fromStdString( py::str { hypercube.dtype() } ), QMessageBox::Ok );
             return nullptr;

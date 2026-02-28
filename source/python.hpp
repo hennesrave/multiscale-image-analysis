@@ -17,7 +17,7 @@ namespace pybind11
         static inline std::wstring python_home;
         static inline std::vector<std::wstring> module_search_paths;
 
-        static void initialize();
+        static bool initialize();
 
         interpreter() noexcept = default;
 

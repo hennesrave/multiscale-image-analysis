@@ -3,9 +3,8 @@
 #include "database.hpp"
 #include "utility.hpp"
 
-#include "feature_selector.hpp"
-
 #include "boxplot_viewer.hpp"
+#include "channel_glyphs_viewer.hpp"
 #include "colormap_viewer.hpp"
 #include "embedding_viewer.hpp"
 #include "histogram_viewer.hpp"
@@ -15,7 +14,7 @@
 #include <qlayout.h>
 #include <qsplitter.h>
 #include <qstackedlayout.h>
-#include <qtimer.h>
+#include <qtabwidget.h>
 
 Workspace::Workspace( Database& database ) : _database { database }
 {
@@ -75,6 +74,20 @@ Workspace::Workspace( Database& database ) : _database { database }
         QObject::connect( _colormap_viewer, &ColormapViewer::colormap_changed, this, [this] ( QSharedPointer<Colormap> colormap )
         {
             _image_viewer->update_colormap( colormap );
+        } );
+        QObject::connect( _embedding_viewer, &EmbeddingViewer::request_channels_embedding, this, [this, splitter_image_spectrum_histogram_boxplot]
+        {
+            if( !_channel_glyphs_viewer )
+            {
+                _channel_glyphs_viewer = new ChannelGlyphsViewer { _database };
+
+                auto embedding_tabwidget = new QTabWidget {};
+                splitter_image_spectrum_histogram_boxplot->replaceWidget( 1, embedding_tabwidget );
+
+                embedding_tabwidget->addTab( _embedding_viewer, "Pixels Embedding" );
+                embedding_tabwidget->addTab( _channel_glyphs_viewer, "Channels Embedding" );
+                embedding_tabwidget->setCurrentWidget( _channel_glyphs_viewer );
+            }
         } );
         QObject::connect( database.features().get(), &CollectionObject::object_appended, [this] ( QSharedPointer<QObject> object )
         {
@@ -147,4 +160,9 @@ Workspace::Workspace( Database& database ) : _database { database }
 
     _database.colormaps()->append( QSharedPointer<Colormap1D>::create( ColormapTemplate::turbo.clone() ) );
     _database.features()->append( feature );
+}
+
+void Workspace::closeEvent( QCloseEvent* event )
+{
+    emit closed();
 }
