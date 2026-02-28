@@ -590,7 +590,53 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
     {
         auto context_menu = QMenu {};
 
-        auto viewport_menu = context_menu.addMenu( "Viewport" );
+        //auto viewport_menu = context_menu.addMenu( "Viewport" );
+        //viewport_menu->addAction( "Entire Dataset", [this]
+        //{
+        //    const auto spatial_metadata = this->_database.dataset()->spatial_metadata();
+        //    this->update_viewport( Viewport { vec2<uint32_t> { 0, 0 }, spatial_metadata->dimensions } );
+        //} );
+
+        //const auto segmentation         = _database.segmentation();
+        //const auto& element_indices     = segmentation->element_indices();
+        //const auto spatial_metadata     = _database.dataset()->spatial_metadata();
+
+        //for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        //{
+        //    const auto segment = segmentation->segment( segment_number );
+
+        //    auto pixmap = QPixmap { 16, 16 };
+        //    pixmap.fill( segment->color().qcolor() );
+
+        //    auto action = viewport_menu->addAction( QIcon { pixmap }, segment->identifier(), [this, segment_number, spatial_metadata, &element_indices]
+        //    {
+        //        const auto& indices = element_indices.value( segment_number );
+        //        if( indices.empty() )
+        //        {
+        //            QMessageBox::warning( this, "", "The selected segment is empty." );
+        //            return;
+        //        }
+
+        //        auto minx = std::numeric_limits<uint32_t>::max();
+        //        auto miny = std::numeric_limits<uint32_t>::max();
+        //        auto maxx = std::numeric_limits<uint32_t>::min();
+        //        auto maxy = std::numeric_limits<uint32_t>::min();
+
+        //        for( const auto index : indices )
+        //        {
+        //            const auto coordinates = spatial_metadata->coordinates( index );
+        //            minx = std::min( minx, coordinates.x );
+        //            miny = std::min( miny, coordinates.y );
+        //            maxx = std::max( maxx, coordinates.x );
+        //            maxy = std::max( maxy, coordinates.y );
+        //        }
+
+        //        this->update_viewport( Viewport {
+        //            vec2<uint32_t> { minx, miny },
+        //            vec2<uint32_t> { maxx - minx + 1, maxy - miny + 1 }
+        //        } );
+        //    } );
+        //}
 
         auto normalization_menu = context_menu.addMenu( "Normalization" );
         auto normalization_action_group = new QActionGroup { normalization_menu };
@@ -614,6 +660,15 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
         }
 
         auto colormap_menu = context_menu.addMenu( "Colormap" );
+
+        for( const auto& [identifier, colormap_template] : ColormapTemplate::registry )
+        {
+            colormap_menu->addAction( identifier, [this, &colormap_template]
+            {
+                _colormap = &colormap_template;
+                this->update_glyph_images();
+            } );
+        }
 
         auto positioning_menu = context_menu.addMenu( "Positioning" );
         auto positioning_action_group = new QActionGroup { positioning_menu };
@@ -966,7 +1021,6 @@ try:
 
     distance_matrix = np.asarray( distance_matrix )
     print( f"[Embedding] Distance matrix shape: {distance_matrix.shape}" )
-    print( distance_matrix )
 
     model = umap.UMAP(
         n_components	= 2,
