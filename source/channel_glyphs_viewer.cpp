@@ -14,6 +14,7 @@
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qpainter.h>
+#include <qpainterpath.h>
 #include <qpushbutton.h>
 #include <qspinbox.h>
 #include <qtoolbutton.h>
@@ -393,17 +394,103 @@ namespace utility
     }
 }
 
+// ----- ChannelSegmentAbundances ----- //
+
+ChannelSegmentAbundances::ChannelSegmentAbundances( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation )
+    : QObject {}, _dataset { dataset }, _segmentation { segmentation }
+{
+    _abundances.initialize( std::bind( &ChannelSegmentAbundances::compute_abundances, this ) );
+
+    QObject::connect( dataset.get(), &Dataset::intensities_changed, &_abundances, &ComputedObject::invalidate );
+
+    QObject::connect( segmentation.get(), &Segmentation::segment_count_changed, &_abundances, &ComputedObject::invalidate );
+    QObject::connect( segmentation.get(), &Segmentation::segment_numbers_changed, &_abundances, &ComputedObject::invalidate );
+
+    QObject::connect( &_abundances, &ComputedObject::changed, this, &ChannelSegmentAbundances::abundances_changed );
+}
+
+QSharedPointer<const Dataset> ChannelSegmentAbundances::dataset() const
+{
+    return _dataset.lock();
+}
+QSharedPointer<const Segmentation> ChannelSegmentAbundances::segmentation() const
+{
+    return _segmentation.lock();
+}
+
+const Array<Array<double>>& ChannelSegmentAbundances::abundances() const
+{
+    return _abundances.value();
+}
+
+Array<Array<double>> ChannelSegmentAbundances::compute_abundances()
+{
+    const auto dataset      = this->dataset();
+    const auto segmentation = this->segmentation();
+
+    if( !dataset || !segmentation )
+    {
+        return Array<Array<double>> {};
+    }
+
+    const auto segment_count    = segmentation->segment_count();
+    auto abundances             = Array<Array<double>> {
+        dataset->channel_count(),
+        Array<double> { segment_count, 0.0 }
+    };
+
+    Console::info( "Computing channel-segment abundances..." );
+    dataset->visit( [&] ( const auto& dataset )
+    {
+        const auto& intensities = dataset.intensities();
+        for( uint32_t element_index = 0; element_index < dataset.element_count(); ++element_index )
+        {
+            const auto segment_number = segmentation->segment_number( element_index );
+            for( uint32_t channel_index = 0; channel_index < dataset.channel_count(); ++channel_index )
+            {
+                const auto intensity = intensities.value( { element_index, channel_index } );
+                abundances[channel_index][segment_number] += static_cast<double>( intensity );
+            }
+        }
+    } );
+
+    for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
+    {
+        auto& channel_abundances = abundances[channel_index];
+
+        auto total = 0.0;
+        for( uint32_t segment_number = 0; segment_number < segment_count; ++segment_number )
+        {
+            total += channel_abundances[segment_number];
+        }
+
+        if( total > 0.0 )
+        {
+            for( auto& abundance : channel_abundances )
+            {
+                abundance /= total;
+            }
+        }
+    }
+
+    return abundances;
+}
+
 // ----- ChannelGlyphsViewer ----- //
 
 ChannelGlyphsViewer::ChannelGlyphsViewer( Database& database )
-    : QWidget {}, _database { database }, _colormap { &ColormapTemplate::turbo }
+    : QWidget {}
+    , _database { database }
+    , _channel_segment_abundances { database.dataset(), database.segmentation() }
+    , _colormap { &ColormapTemplate::turbo }
 {
     this->setFocusPolicy( Qt::WheelFocus );
     this->setMouseTracking( true );
 
+    QObject::connect( this, &ChannelGlyphsViewer::viewport_changed, this, &ChannelGlyphsViewer::update_glyph_values );
     QObject::connect( this, &ChannelGlyphsViewer::normalization_changed, this, &ChannelGlyphsViewer::update_glyph_values );
     QObject::connect( this, &ChannelGlyphsViewer::positioning_changed, this, &ChannelGlyphsViewer::update_glyph_layout );
-    QObject::connect( this, &ChannelGlyphsViewer::viewport_changed, this, &ChannelGlyphsViewer::update_glyph_values );
+    QObject::connect( this, &ChannelGlyphsViewer::abundances_changed, this, qOverload<>( &QWidget::update ) );
 
     const auto features = _database.features();
     QObject::connect( features.get(), &CollectionObject::object_appended, this, qOverload<>( &QWidget::update ) );
@@ -411,9 +498,34 @@ ChannelGlyphsViewer::ChannelGlyphsViewer( Database& database )
 
     QObject::connect( &_database, &Database::highlighted_channel_index_changed, this, qOverload<>( &QWidget::update ) );
 
+    QObject::connect( &_channel_segment_abundances, &ChannelSegmentAbundances::abundances_changed, this, qOverload<>( &QWidget::update ) );
+
     const auto dataset          = _database.dataset();
     const auto spatial_metadata = dataset->spatial_metadata();
     this->update_viewport( Viewport { vec2<uint32_t> { 0, 0 }, spatial_metadata->dimensions } );
+}
+
+ChannelGlyphsViewer::Viewport ChannelGlyphsViewer::viewport() const noexcept
+{
+    return _viewport;
+}
+void ChannelGlyphsViewer::update_viewport( Viewport viewport )
+{
+    if( _viewport.offset == viewport.offset && _viewport.extent == viewport.extent )
+    {
+        return;
+    }
+
+    const auto spatial_metadata = _database.dataset()->spatial_metadata();
+    if( viewport.offset.x + viewport.extent.x > spatial_metadata->dimensions.x ||
+        viewport.offset.y + viewport.extent.y > spatial_metadata->dimensions.y )
+    {
+        Console::warning( "Invalid viewport: offset + extent exceeds dataset dimensions." );
+        return;
+    }
+
+    _viewport = viewport;
+    emit viewport_changed( _viewport );
 }
 
 ChannelGlyphsViewer::Normalization ChannelGlyphsViewer::normalization() const noexcept
@@ -442,27 +554,17 @@ void ChannelGlyphsViewer::update_positioning( Positioning positioning )
     }
 }
 
-ChannelGlyphsViewer::Viewport ChannelGlyphsViewer::viewport() const noexcept
+ChannelGlyphsViewer::Abundances ChannelGlyphsViewer::abundances() const noexcept
 {
-    return _viewport;
+    return _abundances;
 }
-void ChannelGlyphsViewer::update_viewport( Viewport viewport )
+void ChannelGlyphsViewer::update_abundances( Abundances abundances )
 {
-    if( _viewport.offset == viewport.offset && _viewport.extent == viewport.extent )
+    if( _abundances != abundances )
     {
-        return;
+        _abundances = abundances;
+        emit abundances_changed( _abundances );
     }
-
-    const auto spatial_metadata = _database.dataset()->spatial_metadata();
-    if( viewport.offset.x + viewport.extent.x > spatial_metadata->dimensions.x ||
-        viewport.offset.y + viewport.extent.y > spatial_metadata->dimensions.y )
-    {
-        Console::warning( "Invalid viewport: offset + extent exceeds dataset dimensions." );
-        return;
-    }
-
-    _viewport = viewport;
-    emit viewport_changed( _viewport );
 }
 
 void ChannelGlyphsViewer::resizeEvent( QResizeEvent* event )
@@ -477,6 +579,86 @@ void ChannelGlyphsViewer::paintEvent( QPaintEvent* event )
     painter.setRenderHint( QPainter::Antialiasing, true );
 
     painter.drawImage( _canvas_rectangle, _canvas );
+
+    if( _abundances == Abundances::eEnabled || _abundances == Abundances::eSegmentsOnly )
+    {
+        const auto segmentation = _database.segmentation();
+        const auto& abundances  = _channel_segment_abundances.abundances();
+
+        auto segment_colors = Array<QColor> { segmentation->segment_count(), QColor {} };
+        segment_colors[0] = QColor { 230, 230, 230, 255 };
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            segment_colors[segment_number] = segmentation->segment( segment_number )->color().qcolor();
+        }
+
+        auto outer_rectangle    = this->glyph_rectangle( 0 );
+        const auto extent       = std::min( outer_rectangle.width(), outer_rectangle.height() );
+        outer_rectangle.setWidth( extent );
+        outer_rectangle.setHeight( extent );
+        outer_rectangle.adjust( 3.0, 3.0, -3.0, -3.0 );
+
+        auto inner_rectangle = outer_rectangle;
+        inner_rectangle.setWidth( extent * 0.3 );
+        inner_rectangle.setHeight( extent * 0.3 );
+
+        for( uint32_t channel_index = 0; channel_index < abundances.size(); ++channel_index )
+        {
+            auto channel_abundances = abundances[channel_index];
+
+            if( _abundances == Abundances::eSegmentsOnly )
+            {
+                channel_abundances[0] = 0.0;
+
+                auto total = 0.0;
+                for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+                {
+                    total += channel_abundances[segment_number];
+                }
+
+                if( total > 0.0 )
+                {
+                    for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+                    {
+                        channel_abundances[segment_number] /= total;
+                    }
+                }
+            }
+
+            const auto glyph_rectangle = this->glyph_rectangle( channel_index );
+            outer_rectangle.moveCenter( glyph_rectangle.center() );
+            inner_rectangle.moveCenter( glyph_rectangle.center() );
+
+            painter.setPen( Qt::NoPen );
+
+            auto start_angle = 0.0;
+            for( uint32_t segment_number = 0; segment_number < channel_abundances.size(); ++segment_number )
+            {
+                const auto abundance = channel_abundances[segment_number];
+                if( abundance > 0.0 )
+                {
+                    const auto span_angle = abundance * 360.0;
+
+                    auto painter_path = QPainterPath {};
+                    painter_path.arcMoveTo( outer_rectangle, start_angle );
+                    painter_path.arcTo( outer_rectangle, start_angle, span_angle );
+
+                    painter_path.arcTo( inner_rectangle, start_angle + span_angle, -span_angle );
+                    painter_path.closeSubpath();
+
+                    painter.setBrush( segment_colors[segment_number] );
+                    painter.drawPath( painter_path );
+
+                    start_angle += span_angle;
+                }
+            }
+
+            painter.setPen( Qt::black );
+            painter.setBrush( Qt::NoBrush );
+            painter.drawEllipse( outer_rectangle );
+            painter.drawEllipse( inner_rectangle );
+        }
+    }
 
     // Render features
     for( const auto object : *_database.features() ) if( auto feature = object.objectCast<DatasetChannelsFeature>() )
@@ -590,6 +772,7 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
     {
         auto context_menu = QMenu {};
 
+        // Viewport
         auto viewport_menu = context_menu.addMenu( "Viewport" );
         viewport_menu->addAction( "Entire Dataset", [this]
         {
@@ -638,6 +821,7 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
             } );
         }
 
+        // Normalization
         auto normalization_menu = context_menu.addMenu( "Normalization" );
         auto normalization_action_group = new QActionGroup { normalization_menu };
         normalization_action_group->setExclusive( true );
@@ -659,6 +843,7 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
             normalization_action_group->addAction( action );
         }
 
+        // Colormap
         auto colormap_menu = context_menu.addMenu( "Colormap" );
 
         for( const auto& [identifier, colormap_template] : ColormapTemplate::registry )
@@ -670,6 +855,7 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
             } );
         }
 
+        // Positioning
         auto positioning_menu = context_menu.addMenu( "Positioning" );
         auto positioning_action_group = new QActionGroup { positioning_menu };
         positioning_action_group->setExclusive( true );
@@ -688,22 +874,46 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
             } );
             action->setCheckable( true );
             action->setChecked( _positioning == positioning );
+
             positioning_action_group->addAction( action );
         }
 
-        context_menu.addAction( "Reset View", this, &ChannelGlyphsViewer::reset_canvas_rectangle );
+        positioning_menu->addSeparator();
 
-        context_menu.addSeparator();
-
-        auto distance_matrix_menu = context_menu.addMenu( "Distance Matrix" );
+        auto distance_matrix_menu = positioning_menu->addMenu( "Distance Matrix" );
         distance_matrix_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_distance_matrix );
         distance_matrix_menu->addAction( "Export", [this] { this->on_export_distance_matrix(); } );
         distance_matrix_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_distance_matrix );
 
-        auto embedding_menu = context_menu.addMenu( "Embedding" );
+        auto embedding_menu = positioning_menu->addMenu( "Embedding" );
         embedding_menu->addAction( "Create", this, &ChannelGlyphsViewer::on_create_embedding );
         embedding_menu->addAction( "Export", [this] { this->on_export_embedding(); } );
         embedding_menu->addAction( "Import", this, &ChannelGlyphsViewer::on_import_embedding );
+
+        // Abundances
+        auto abundances_menu = context_menu.addMenu( "Abundances" );
+        auto abundances_action_group = new QActionGroup { abundances_menu };
+        abundances_action_group->setExclusive( true );
+
+        const auto abundances_options = std::vector<std::pair<const char*, Abundances>> {
+            { "Disabled", Abundances::eDisabled },
+            { "Enabled", Abundances::eEnabled },
+            { "Segments Only", Abundances::eSegmentsOnly }
+        };
+
+        for( const auto& [label, abundances] : abundances_options )
+        {
+            const auto action = abundances_menu->addAction( label, [this, abundances]
+            {
+                this->update_abundances( abundances );
+            } );
+            action->setCheckable( true );
+            action->setChecked( _abundances == abundances );
+
+            abundances_action_group->addAction( action );
+        }
+
+        context_menu.addAction( "Reset View", this, &ChannelGlyphsViewer::reset_canvas_rectangle );
 
         context_menu.exec( event->globalPosition().toPoint() );
     }

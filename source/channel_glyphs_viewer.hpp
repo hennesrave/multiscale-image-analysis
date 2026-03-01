@@ -1,14 +1,44 @@
 #pragma once
 #include "database.hpp"
+#include "utility.hpp"
 
 #include <qwidget.h>
 
 class ColormapTemplate;
 
+class ChannelSegmentAbundances : public QObject
+{
+    Q_OBJECT
+public:
+    ChannelSegmentAbundances( QSharedPointer<const Dataset> dataset, QSharedPointer<const Segmentation> segmentation );
+
+    QSharedPointer<const Dataset> dataset() const;
+    QSharedPointer<const Segmentation> segmentation() const;
+
+    const Array<Array<double>>& abundances() const;
+
+signals:
+    void abundances_changed() const;
+
+private:
+    Array<Array<double>> compute_abundances();
+
+    QWeakPointer<const Dataset> _dataset;
+    QWeakPointer<const Segmentation> _segmentation;
+
+    Computed<Array<Array<double>>> _abundances;
+};
+
 class ChannelGlyphsViewer : public QWidget
 {
     Q_OBJECT
 public:
+    struct Viewport
+    {
+        vec2<uint32_t> offset;
+        vec2<uint32_t> extent;
+    };
+
     enum class Normalization
     {
         eGlobal,
@@ -22,10 +52,11 @@ public:
         eGridified
     };
 
-    struct Viewport
+    enum class Abundances
     {
-        vec2<uint32_t> offset;
-        vec2<uint32_t> extent;
+        eDisabled,
+        eEnabled,
+        eSegmentsOnly
     };
 
     struct Glyph
@@ -38,19 +69,23 @@ public:
 
     ChannelGlyphsViewer( Database& database );
 
+    Viewport viewport() const noexcept;
+    void update_viewport( Viewport viewport );
+
     Normalization normalization() const noexcept;
     void update_normalization( Normalization normalization );
 
     Positioning positioning() const noexcept;
     void update_positioning( Positioning positioning );
 
-    Viewport viewport() const noexcept;
-    void update_viewport( Viewport viewport );
+    Abundances abundances() const noexcept;
+    void update_abundances( Abundances abundances );
 
 signals:
+    void viewport_changed( Viewport viewport ) const;
     void normalization_changed( Normalization normalization ) const;
     void positioning_changed( Positioning positioning ) const;
-    void viewport_changed( Viewport viewport ) const;
+    void abundances_changed( Abundances abundances ) const;
 
 protected:
     void resizeEvent( QResizeEvent* event ) override;
@@ -83,10 +118,13 @@ private:
 
     Database& _database;
 
+    ChannelSegmentAbundances _channel_segment_abundances;
+
     Viewport _viewport;
     Normalization _normalization        = Normalization::eGlobal;
     const ColormapTemplate* _colormap   = nullptr;
     Positioning _positioning            = Positioning::eLinear;
+    Abundances _abundances              = Abundances::eDisabled;
 
     QImage _canvas;
     std::vector<Glyph> _glyphs;
