@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+authors:
+- family-names: "Rave"
+  given-names: "Hennes"
+title: "MIA: Multiscale Image Analysis"
+version: 1.0.5
+date-released: 2026-03-01
+url: "https://github.com/hennesrave/multiscale-image-analysis"
