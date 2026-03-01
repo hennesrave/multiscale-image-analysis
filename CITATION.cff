@@ -4,6 +4,5 @@ authors:
 - family-names: "Rave"
   given-names: "Hennes"
 title: "MIA: Multiscale Image Analysis"
-version: 1.0.5
-date-released: 2026-03-01
+date-released: 2025-08-06
 url: "https://github.com/hennesrave/multiscale-image-analysis"
