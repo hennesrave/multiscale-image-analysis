@@ -255,6 +255,26 @@ void DatasetAlignmentDialog::mouseReleaseEvent( QMouseEvent* event )
         interpolation_action_group->addAction( action_nearest_neighbor );
         interpolation_action_group->addAction( action_bilinear );
 
+        auto edge_menu = context_menu.addMenu( "Edge Mode" );
+        auto action_zero = edge_menu->addAction( "Zero", [this]
+        {
+            _edge_mode = EdgeMode::eZero;
+        } );
+        action_zero->setCheckable( true );
+        action_zero->setChecked( _edge_mode == EdgeMode::eZero );
+
+        auto action_clamp = edge_menu->addAction( "Clamp", [this]
+        {
+            _edge_mode = EdgeMode::eClamp;
+        } );
+        action_clamp->setCheckable( true );
+        action_clamp->setChecked( _edge_mode == EdgeMode::eClamp );
+
+        auto edge_action_group = new QActionGroup { edge_menu };
+        edge_action_group->setExclusive( true );
+        edge_action_group->addAction( action_zero );
+        edge_action_group->addAction( action_clamp );
+
         context_menu.addAction( "Reset Alignment", [this]
         {
             _source_points = { QPointF { 0.0, 0.0 }, QPointF { 1.0, 0.0 }, QPointF { 0.0, 1.0 } };
@@ -308,6 +328,19 @@ void DatasetAlignmentDialog::mouseReleaseEvent( QMouseEvent* event )
                         source_normalized_coordinates.x() * source_spatial_metadata->width,
                         source_normalized_coordinates.y() * source_spatial_metadata->height
                     };
+
+                    if( _edge_mode == EdgeMode::eZero )
+                    {
+                        const auto source_coordinates = vec2<int64_t> {
+                            static_cast<int64_t>( std::round( source_pixel_coordinates.x() ) ),
+                            static_cast<int64_t>( std::round( source_pixel_coordinates.y() ) )
+                        };
+                        if( source_coordinates.x < 0 || source_coordinates.x >= source_spatial_metadata->width ||
+                            source_coordinates.y < 0 || source_coordinates.y >= source_spatial_metadata->height )
+                        {
+                            continue;
+                        }
+                    }
 
                     if( _interpolation_mode == InterpolationMode::eNearestNeighbor )
                     {

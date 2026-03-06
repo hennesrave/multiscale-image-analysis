@@ -24,6 +24,12 @@ public:
         eBilinear
     };
 
+    enum class EdgeMode
+    {
+        eZero,
+        eClamp
+    };
+
     DatasetAlignmentDialog( QSharedPointer<Dataset> source, QSharedPointer<Dataset> target );
 
     QSharedPointer<Dataset> source() const noexcept;
@@ -56,6 +62,8 @@ private:
     std::optional<size_t> _active_point_index   = std::nullopt;
 
     InterpolationMode _interpolation_mode   = InterpolationMode::eBilinear;
+    EdgeMode _edge_mode                     = EdgeMode::eClamp;
+
     qreal _source_opacity = 0.5;
 
     std::array<QPointF, 3> _source_points {
