@@ -897,8 +897,13 @@ void SpectrumViewer::import_spectra()
 }
 void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& reference_spectra ) const
 {
+    auto target_combobox = new QComboBox {};
+    target_combobox->addItem( "Entire Dataset" );
+    target_combobox->addItem( "Segment Averages" );
+
     auto metric_combobox = new QComboBox {};
     metric_combobox->addItem( "Euclidean" );
+    metric_combobox->addItem( "Cosine" );
 
     auto filepath_label = new QLabel {};
     filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
@@ -966,22 +971,61 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
                     spectra_count
                 ) );
 
-                utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                if( metric_combobox->currentText() == "Euclidean" )
                 {
-                    auto euclidean_distance = 0.0;
+                    utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                    {
+                        auto euclidean_distance = 0.0;
+                        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+                        {
+                            const auto element_intensity = static_cast<double>( intensities.value( { element_index, channel_index } ) );
+                            const auto reference_intensity = reference_spectrum.values[channel_index];
+
+                            const auto difference = element_intensity - reference_intensity;
+                            euclidean_distance += difference * difference;
+                        }
+                        euclidean_distance = std::sqrt( euclidean_distance );
+
+                        const auto similarity = 1.0 / ( 1.0 + euclidean_distance );
+                        similarities.update_value( { element_index, spectrum_index }, similarity );
+                    } );
+                }
+                else if( metric_combobox->currentText() == "Cosine" )
+                {
+                    auto reference_magnitude = 0.0;
                     for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
                     {
-                        const auto element_intensity = static_cast<double>( intensities.value( { element_index, channel_index } ) );
                         const auto reference_intensity = reference_spectrum.values[channel_index];
-
-                        const auto difference = element_intensity - reference_intensity;
-                        euclidean_distance += difference * difference;
+                        reference_magnitude += reference_intensity * reference_intensity;
                     }
-                    euclidean_distance = std::sqrt( euclidean_distance );
+                    reference_magnitude = std::sqrt( reference_magnitude );
 
-                    const auto similarity = 1.0 / ( 1.0 + euclidean_distance );
-                    similarities.update_value( { element_index, spectrum_index }, similarity );
-                } );
+                    utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                    {
+                        auto element_magnitude = 0.0;
+                        auto cosine_similarity = 0.0;
+                        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+                        {
+                            const auto element_intensity    = static_cast<double>( intensities.value( { element_index, channel_index } ) );
+                            const auto reference_intensity  = reference_spectrum.values[channel_index];
+                            element_magnitude += element_intensity * element_intensity;
+                            cosine_similarity += element_intensity * reference_intensity;
+                        }
+                        element_magnitude = std::sqrt( element_magnitude );
+
+                        if( element_magnitude == 0.0 || reference_magnitude == 0.0 )
+                        {
+                            cosine_similarity = 0.0;
+                        }
+                        else
+                        {
+                            cosine_similarity /= ( element_magnitude * reference_magnitude );
+                        }
+
+                        const auto similarity = cosine_similarity * 0.5 + 0.5;
+                        similarities.update_value( { element_index, spectrum_index }, similarity );
+                    } );
+                }
             }
         } );
 
