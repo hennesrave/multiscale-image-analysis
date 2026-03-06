@@ -3,9 +3,11 @@
 #include "database.hpp"
 
 #include <qcolordialog.h>
+#include <qcombobox.h>
 #include <qlabel.h>
 #include <qlayout.h>
 #include <qlineedit.h>
+#include <qlistwidget.h>
 #include <qmessagebox.h>
 #include <qpushbutton.h>
 #include <qtoolbutton.h>
@@ -129,6 +131,29 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
                 {
                     _database.segmentation()->remove_segment( segment );
 
+                    //while( auto item = layout->takeAt( 0 ) )
+                    //{
+                    //    delete item->widget();
+                    //    delete item;
+                    //}
+                    //segments_layout->removeItem( layout );
+                    //delete layout;
+                }
+            }
+        } );
+
+        QObject::connect( segment.get(), &Segment::color_changed, this, update_button_color );
+        QObject::connect( segment.get(), &Segment::identifier_changed, this, [lineedit_identifier] ( const QString& identifier )
+        {
+            lineedit_identifier->setText( identifier );
+        } );
+
+        QObject::connect( _database.segmentation().get(), &Segmentation::segment_removed, this, [this, pointer = QWeakPointer { segment }, segments_layout, layout]( const QSharedPointer<Segment>& removed_segment )
+        {
+            if( auto segment = pointer.lock() )
+            {
+                if( segment == removed_segment )
+                {
                     while( auto item = layout->takeAt( 0 ) )
                     {
                         delete item->widget();
@@ -139,21 +164,19 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
                 }
             }
         } );
-
-        QObject::connect( segment.get(), &Segment::color_changed, this, update_button_color );
-        QObject::connect( segment.get(), &Segment::identifier_changed, this, [lineedit_identifier] ( const QString& identifier )
-        {
-            lineedit_identifier->setText( identifier );
-        } );
     };
 
     auto button_create_segment = new QPushButton { "Create Segment" };
-    button_create_segment->setStyleSheet( "QPushButton { padding: 2px 5px 2px 5px; }" );
+    button_create_segment->setStyleSheet( "QPushButton { padding: 2px 10px 2px 10px; }" );
+
+    auto button_merge_segments = new QPushButton { "Merge Segments" };
+    button_merge_segments->setStyleSheet( "QPushButton { padding: 2px 10px 2px 10px; }" );
 
     auto controls = new QHBoxLayout {};
     controls->setContentsMargins( 0, 0, 0, 0 );
     controls->setSpacing( 5 );
     controls->addWidget( button_create_segment );
+    controls->addWidget( button_merge_segments );
 
     auto layout = new QVBoxLayout { this };
     layout->setContentsMargins( 20, 10, 20, 10 );
@@ -165,6 +188,85 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
     QObject::connect( button_create_segment, &QPushButton::clicked, this, [this, append_segment]
     {
         _database.update_active_segment( _database.segmentation()->append_segment() );
+    } );
+    QObject::connect( button_merge_segments, &QPushButton::clicked, this, [this]
+    {
+        const auto segmentation = _database.segmentation();
+
+        auto segments_list = new QListWidget {};
+        segments_list->setSelectionMode( QAbstractItemView::MultiSelection );
+
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            const auto segment = segmentation->segment( segment_number );
+
+            auto pixmap = QPixmap { 16, 16 };
+            pixmap.fill( segment->color().qcolor() );
+
+            auto item = new QListWidgetItem { QIcon { pixmap }, segment->identifier() };
+            item->setData( Qt::UserRole, segment_number );
+
+            segments_list->addItem( item );
+        }
+
+        auto button_merge = new QPushButton { "Merge" };
+
+        auto layout = new QVBoxLayout {};
+        layout->setContentsMargins( 10, 10, 10, 10 );
+        layout->setSpacing( 10 );
+
+        layout->addWidget( segments_list );
+        layout->addWidget( button_merge );
+
+        auto dialog = QDialog {};
+        dialog.setWindowTitle( "Merge Segments..." );
+        dialog.setLayout( layout );
+
+        QObject::connect( button_merge, &QPushButton::clicked, this, [&]
+        {
+            auto source_segment_numbers = std::vector<uint32_t> {};
+            for( const auto item : segments_list->selectedItems() )
+            {
+                source_segment_numbers.push_back( item->data( Qt::UserRole ).toUInt() );
+            }
+
+            if( source_segment_numbers.size() < 2 )
+            {
+                QMessageBox::warning( &dialog, "Merge Segments...", "Please select at least two segments to merge." );
+                return;
+            }
+
+            auto target_segment = segmentation->append_segment();
+            const auto target_segment_number = target_segment->number();
+            {
+                auto editor = segmentation->editor();
+                for( uint32_t element_index = 0; element_index < segmentation->element_count(); ++element_index )
+                {
+                    const auto segment_number = segmentation->segment_number( element_index );
+
+                    auto contained = false;
+                    for( const auto source_segment_number : source_segment_numbers )
+                    {
+                        if( segmentation->segment_number( element_index ) == source_segment_number )
+                        {
+                            editor.update_value( element_index, target_segment_number );
+                            break;
+                        }
+                    }
+                }
+            }
+
+            for( size_t i = source_segment_numbers.size(); i-- > 0; )
+            {
+                segmentation->remove_segment( segmentation->segment( source_segment_numbers[i] ) );
+            }
+
+            _database.update_active_segment( target_segment );
+
+            dialog.accept();
+        } );
+
+        dialog.exec();
     } );
 
     const auto segmentation = _database.segmentation();
