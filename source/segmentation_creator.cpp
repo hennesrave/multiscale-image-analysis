@@ -135,10 +135,15 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
     leiden_resolution_parameter->setSingleStep( 0.01 );
     leiden_resolution_parameter->setValue( 1.0 );
 
+    auto leiden_random_state = new QSpinBox {};
+    leiden_random_state->setRange( std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max() );
+    leiden_random_state->setValue( 42 );
+
     auto leiden_widget = new QWidget {};
     auto leiden_layout = new QFormLayout { leiden_widget };
     leiden_layout->setContentsMargins( 0, 0, 0, 0 );
     leiden_layout->addRow( "Resolution Parameter", leiden_resolution_parameter );
+    leiden_layout->addRow( "Random State", leiden_random_state );
 
     auto algorithm_properties = new QStackedWidget {};
     algorithm_properties->setContentsMargins( 20, 0, 0, 0 );
@@ -295,6 +300,7 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
             "hdbscan_subsampling"_a = hdbscan_subsampling->value(),
 
             "leiden_resolution_parameter"_a = leiden_resolution_parameter->value(),
+            "leiden_random_state"_a = leiden_random_state->value(),
             "leiden_model"_a = embedding? embedding->model() : py::none {},
 
             "error"_a = std::string {},
@@ -425,7 +431,8 @@ try:
             graph,
             leidenalg.RBConfigurationVertexPartition,
             weights="weight",
-            resolution_parameter=leiden_resolution_parameter
+            resolution_parameter=leiden_resolution_parameter,
+            seed=leiden_random_state
         )
 
         labels = np.array( partition.membership, dtype=np.uint32 ) + 1
