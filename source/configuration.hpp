@@ -9,7 +9,7 @@ namespace config
     {
         uint8_t major = 1;
         uint8_t minor = 0;
-        uint8_t patch = 5;
+        uint8_t patch = 6;
 
         bool operator==( const ApplicationVersion& other ) const noexcept
         {
@@ -44,7 +44,7 @@ namespace config
     };
 
     constexpr inline ApplicationVersion application_version;
-    constexpr inline auto application_version_string = "1.0.5";
+    constexpr inline auto application_version_string = "1.0.6";
     constexpr inline auto application_identifier = "multiscale-image-analysis";
     constexpr inline auto application_display_name = "MIA: Multiscale Image Analysis";
 

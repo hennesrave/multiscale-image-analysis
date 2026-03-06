@@ -2,13 +2,14 @@
 
 #include "database.hpp"
 
-#include <qapplication.h>
 #include <qcolordialog.h>
+#include <qlabel.h>
 #include <qlayout.h>
 #include <qlineedit.h>
 #include <qmessagebox.h>
 #include <qpushbutton.h>
 #include <qtoolbutton.h>
+#include <qwidgetaction.h>
 
 SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _database { database }
 {
@@ -34,14 +35,20 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
 
         auto lineedit_identifier = new QLineEdit { segment->identifier() };
 
+        auto button_merge = new QToolButton {};
+        button_merge->setIcon( QIcon { ":/merge.svg" } );
+        button_merge->setToolTip( "Merge Segment" );
+
         auto button_remove = new QToolButton {};
         button_remove->setIcon( QIcon { ":/delete.svg" } );
+        button_remove->setToolTip( "Remove Segment" );
 
         auto layout = new QHBoxLayout {};
         layout->setContentsMargins( 0, 0, 0, 0 );
         layout->setSpacing( 2 );
         layout->addWidget( button_color );
         layout->addWidget( lineedit_identifier );
+        layout->addWidget( button_merge );
         layout->addWidget( button_remove );
 
         segments_layout->addLayout( layout );
@@ -61,6 +68,53 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
             if( auto segment = pointer.lock() )
             {
                 segment->update_identifier( text );
+            }
+        } );
+        QObject::connect( button_merge, &QToolButton::clicked, this, [this, pointer = QWeakPointer { segment }, button_merge, button_remove]
+        {
+            if( auto source = pointer.lock() )
+            {
+                auto context_menu = QMenu {};
+
+                auto label_target_segment = new QLabel { "Target Segment" };
+                label_target_segment->setAlignment( Qt::AlignCenter );
+
+                auto widget_action = new QWidgetAction { &context_menu };
+                widget_action->setDefaultWidget( label_target_segment );
+
+                context_menu.addAction( widget_action );
+                context_menu.addSeparator();
+
+                const auto segmentation     = _database.segmentation();
+                const auto source_number    = source->number();
+
+                for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+                {
+                    const auto target           = segmentation->segment( segment_number );
+                    const auto target_number    = target->number();
+
+                    if( target != source )
+                    {
+                        auto pixmap = QPixmap { 16, 16 };
+                        pixmap.fill( target->color().qcolor() );
+                        auto action = context_menu.addAction( QIcon { pixmap }, target->identifier(), [segmentation, source_number, target_number, button_remove]
+                        {
+                            {
+                                auto editor = segmentation->editor();
+                                for( uint32_t element_index = 0; element_index < segmentation->element_count(); ++element_index )
+                                {
+                                    if( segmentation->segment_number( element_index ) == source_number )
+                                    {
+                                        editor.update_value( element_index, target_number );
+                                    }
+                                }
+                            }
+                            button_remove->click();
+                        } );
+                    }
+                }
+
+                context_menu.exec( button_merge->mapToGlobal( QPoint { 0, button_merge->height() } ) );
             }
         } );
         QObject::connect( button_remove, &QToolButton::clicked, this, [this, pointer = QWeakPointer { segment }, segments_layout, layout]
@@ -94,6 +148,7 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
     };
 
     auto button_create_segment = new QPushButton { "Create Segment" };
+    button_create_segment->setStyleSheet( "QPushButton { padding: 2px 5px 2px 5px; }" );
 
     auto controls = new QHBoxLayout {};
     controls->setContentsMargins( 0, 0, 0, 0 );
@@ -102,7 +157,7 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
 
     auto layout = new QVBoxLayout { this };
     layout->setContentsMargins( 20, 10, 20, 10 );
-    layout->setSpacing( 5 );
+    layout->setSpacing( 20 );
     layout->addLayout( segments_layout );
     layout->addStretch( 1 );
     layout->addLayout( controls );
