@@ -4,6 +4,7 @@
 #include "dataset_exporter.hpp"
 #include "feature.hpp"
 #include "segmentation.hpp"
+#include "segment_selector.hpp"
 #include "utility.hpp"
 
 #include <qactiongroup.h>
@@ -897,9 +898,11 @@ void SpectrumViewer::import_spectra()
 }
 void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& reference_spectra ) const
 {
-    auto target_combobox = new QComboBox {};
-    target_combobox->addItem( "Entire Dataset" );
-    target_combobox->addItem( "Segment Averages" );
+    //auto target_combobox = new QComboBox {};
+    //target_combobox->addItem( "Entire Dataset" );
+    //target_combobox->addItem( "Segment Averages" );
+
+    auto segment_selector = new SegmentSelector { _database.segmentation() };
 
     auto metric_combobox = new QComboBox {};
     metric_combobox->addItem( "Euclidean" );
@@ -930,10 +933,11 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
 
     auto layout = new QFormLayout { &dialog };
 
+    layout->addRow( "Filter", segment_selector );
     layout->addRow( "Metric", metric_combobox );
     layout->addRow( "Filepath", filepath_layout );
     layout->addItem( new QSpacerItem { 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding } );
-    layout->addWidget( button_compute );
+    layout->addRow( button_compute );
 
     QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
     {
@@ -950,12 +954,24 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
         }
 
         const auto dataset = _database.dataset();
+        const auto segmentation = _database.segmentation();
 
         const auto element_count = dataset->element_count();
         const auto channel_count = dataset->channel_count();
         const auto spectra_count = static_cast<uint32_t>( reference_spectra.size() );
 
-        auto similarities = Matrix<float>::allocate( { element_count, spectra_count } );
+        auto indices = std::vector<uint32_t> {};
+        if( const auto segment = segment_selector->selected_segment() )
+        {
+            indices = segmentation->element_indices()[segment->number()];
+        }
+        else
+        {
+            indices.resize( element_count );
+            std::iota( indices.begin(), indices.end(), 0 );
+        }
+
+        auto similarities = Matrix<float> { { element_count, spectra_count }, 0.0f };
         dataset->visit( [&] ( const auto& dataset )
         {
             const auto& intensities = dataset.intensities();
@@ -973,8 +989,10 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
 
                 if( metric_combobox->currentText() == "Euclidean" )
                 {
-                    utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                    utility::iterate_parallel( indices.size(), [&] ( size_t i )
                     {
+                        const auto element_index = indices[i];
+
                         auto euclidean_distance = 0.0;
                         for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
                         {
@@ -1000,8 +1018,10 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
                     }
                     reference_magnitude = std::sqrt( reference_magnitude );
 
-                    utility::iterate_parallel( element_count, [&] ( uint32_t element_index )
+                    utility::iterate_parallel( indices.size(), [&] ( size_t i )
                     {
+                        const auto element_index = indices[i];
+
                         auto element_magnitude = 0.0;
                         auto cosine_similarity = 0.0;
                         for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
