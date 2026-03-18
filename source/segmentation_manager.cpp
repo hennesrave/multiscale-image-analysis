@@ -236,6 +236,8 @@ SegmentationManager::SegmentationManager( Database& database ) : QDialog {}, _da
                 return;
             }
 
+            std::sort( source_segment_numbers.begin(), source_segment_numbers.end() );
+
             auto target_segment = segmentation->append_segment();
             const auto target_segment_number = target_segment->number();
             {
