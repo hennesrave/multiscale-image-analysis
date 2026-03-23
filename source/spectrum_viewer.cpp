@@ -885,19 +885,28 @@ void SpectrumViewer::import_spectra()
                 }
             }
 
-            dialog.accept();
-            this->compute_similarity( selected_spectra );
+            auto context_menu = QMenu {};
+
+            context_menu.addAction( "Dataset", [&]
+            {
+                dialog.accept();
+                this->compute_similarity_dataset( selected_spectra );
+            } );
+            context_menu.addAction( "Segments", [&]
+            {
+                dialog.accept();
+                this->compute_similarity_segments( selected_spectra );
+            } );
+
+            context_menu.setFixedWidth( button_compute_similarity->width() );
+            context_menu.exec( button_compute_similarity->mapToGlobal( QPoint { 0, button_compute_similarity->height() } ) );
         } );
 
         dialog.exec();
     }
 }
-void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& reference_spectra ) const
+void SpectrumViewer::compute_similarity_dataset( const std::vector<ImportedSpectrum>& reference_spectra ) const
 {
-    //auto target_combobox = new QComboBox {};
-    //target_combobox->addItem( "Entire Dataset" );
-    //target_combobox->addItem( "Segment Averages" );
-
     auto segment_selector = new SegmentSelector { _database.segmentation() };
 
     auto metric_combobox = new QComboBox {};
@@ -924,7 +933,7 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
     auto button_compute = new QPushButton { "Compute" };
 
     auto dialog = QDialog {};
-    dialog.setWindowTitle( "Compute Similarity..." );
+    dialog.setWindowTitle( "Compute Similarity (Dataset)..." );
     dialog.setMinimumSize( 400, 300 );
 
     auto layout = new QFormLayout { &dialog };
@@ -945,7 +954,7 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
     {
         if( filepath_label->text().isEmpty() )
         {
-            QMessageBox::warning( nullptr, "Compute Similarity...", "Please select a valid filepath" );
+            QMessageBox::warning( nullptr, "Compute Similarity (Dataset)...", "Please select a valid filepath" );
             return;
         }
 
@@ -1071,6 +1080,150 @@ void SpectrumViewer::compute_similarity( const std::vector<ImportedSpectrum>& re
         else
         {
             QMessageBox::critical( nullptr, "", "Failed to open file" );
+        }
+
+        dialog.accept();
+    } );
+
+    dialog.exec();
+}
+void SpectrumViewer::compute_similarity_segments( const std::vector<ImportedSpectrum>& reference_spectra ) const
+{
+    auto metric_combobox = new QComboBox {};
+    metric_combobox->addItem( "Euclidean" );
+    metric_combobox->addItem( "Cosine" );
+
+    auto filepath_label = new QLabel {};
+    filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
+    filepath_label->setTextInteractionFlags( Qt::TextSelectableByMouse );
+    filepath_label->setStyleSheet( "QLabel { background: #fafafa; border-radius: 3px; }" );
+    filepath_label->setMaximumWidth( 300 );
+    filepath_label->setContentsMargins( 5, 3, 5, 3 );
+
+    auto filepath_button = new QToolButton {};
+    filepath_button->setIcon( QIcon { ":/edit.svg" } );
+    filepath_button->setCursor( Qt::ArrowCursor );
+
+    auto filepath_layout = new QHBoxLayout {};
+    filepath_layout->setContentsMargins( 0, 0, 0, 0 );
+    filepath_layout->setSpacing( 10 );
+    filepath_layout->addWidget( filepath_label, 1 );
+    filepath_layout->addWidget( filepath_button );
+
+    auto button_compute = new QPushButton { "Compute" };
+
+    auto dialog = QDialog {};
+    dialog.setWindowTitle( "Compute Similarity (Segments)..." );
+    dialog.setMinimumSize( 400, 300 );
+
+    auto layout = new QFormLayout { &dialog };
+
+    layout->addRow( "Metric", metric_combobox );
+    layout->addRow( "Filepath", filepath_layout );
+    layout->addItem( new QSpacerItem { 0, 0, QSizePolicy::Minimum, QSizePolicy::Expanding } );
+    layout->addRow( button_compute );
+
+    QObject::connect( filepath_button, &QToolButton::clicked, [filepath_label]
+    {
+        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", "*.csv" );
+        filepath_label->setText( filepath );
+    } );
+
+    QObject::connect( button_compute, &QPushButton::clicked, this, [&]
+    {
+        if( filepath_label->text().isEmpty() )
+        {
+            QMessageBox::warning( nullptr, "Compute Similarity (Segments)...", "Please select a valid filepath" );
+            return;
+        }
+
+        auto file = QFile { filepath_label->text() };
+        if( !file.open( QFile::WriteOnly | QFile::Text ) )
+        {
+            QMessageBox::critical( nullptr, "", "Failed to open file" );
+            return;
+        }
+
+        auto stream = QTextStream { &file };
+        stream << "identifier,color,reference_spectrum,similarity\n";
+
+        const auto dataset                  = _database.dataset();
+        const auto segmentation             = _database.segmentation();
+        const auto segmentation_statistics  = dataset->segmentation_statistics( segmentation );
+
+        const auto write_statistics = [&] ( const QString& identifier, const QColor& color, uint32_t element_count, const Dataset::Statistics& statistics )
+        {
+            if( element_count == 0 ) return;
+
+            for( const auto& reference_spectrum : reference_spectra )
+            {
+                auto reference_spectrum_identifier = reference_spectrum.identifier;
+                if( !reference_spectrum.statistic.isEmpty() )
+                {
+                    reference_spectrum_identifier += " (" + reference_spectrum.statistic + ')';
+                }
+
+                stream << identifier << ',';
+                stream << color.name() << ',';
+                stream << reference_spectrum_identifier << ',';
+
+                auto similarity = 0.0;
+
+                if( metric_combobox->currentText() == "Euclidean" )
+                {
+                    auto euclidean_distance = 0.0;
+                    for( uint32_t channel_index = 0; channel_index < statistics.channel_averages.size(); ++channel_index )
+                    {
+                        const auto element_intensity    = statistics.channel_averages[channel_index];
+                        const auto reference_intensity  = reference_spectrum.values[channel_index];
+
+                        const auto difference   = element_intensity - reference_intensity;
+                        euclidean_distance      += difference * difference;
+                    }
+                    euclidean_distance = std::sqrt( euclidean_distance );
+                    similarity = 1.0 / ( 1.0 + euclidean_distance );
+                }
+                else if( metric_combobox->currentText() == "Cosine" )
+                {
+                    auto element_magnitude      = 0.0;
+                    auto reference_magnitude    = 0.0;
+                    auto cosine_similarity      = 0.0;
+                    for( uint32_t channel_index = 0; channel_index < statistics.channel_averages.size(); ++channel_index )
+                    {
+                        const auto element_intensity    = statistics.channel_averages[channel_index];
+                        const auto reference_intensity  = reference_spectrum.values[channel_index];
+                        element_magnitude               += element_intensity * element_intensity;
+                        reference_magnitude             += reference_intensity * reference_intensity;
+                        cosine_similarity               += element_intensity * reference_intensity;
+                    }
+                    reference_magnitude = std::sqrt( reference_magnitude );
+                    element_magnitude   = std::sqrt( element_magnitude );
+
+                    if( element_magnitude == 0.0 || reference_magnitude == 0.0 )
+                    {
+                        cosine_similarity = 0.0;
+                    }
+                    else
+                    {
+                        cosine_similarity /= ( element_magnitude * reference_magnitude );
+                    }
+                    similarity = cosine_similarity * 0.5 + 0.5;
+                }
+
+                stream << similarity << '\n';
+            }
+        };
+
+        write_statistics( "Dataset", QColor { 0, 0, 0 }, dataset->element_count(), dataset->statistics() );
+        for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
+        {
+            const auto segment = segmentation->segment( segment_number );
+            write_statistics(
+                segment->identifier(),
+                segment->color().qcolor(),
+                segment->element_count(),
+                segmentation_statistics[segment_number]
+            );
         }
 
         dialog.accept();
