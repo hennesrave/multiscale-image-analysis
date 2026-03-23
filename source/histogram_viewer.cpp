@@ -184,23 +184,27 @@ void HistogramViewer::paintEvent( QPaintEvent* event )
         values_string += '\n' + QString::number( 100.0 * percentage_bin, 'f', 1 ) + " % of bin";
     }
 
-    auto labels_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, labels_string ).toRectF();
-    auto values_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, values_string ).toRectF();
+    if( labels_string.size() || values_string.size() )
+    {
+        auto labels_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, labels_string ).toRectF();
+        auto values_rectangle = painter.fontMetrics().boundingRect( QRect { 0, 0, 10000, 10000 }, Qt::TextWordWrap, values_string ).toRectF();
 
-    values_rectangle.moveTopRight( content_rectangle.topRight() + QPointF { -10.0, 10.0 } );
-    labels_rectangle.moveRight( values_rectangle.left() - 10.0 );
-    labels_rectangle.moveTop( values_rectangle.top() );
+        values_rectangle.moveTopRight( content_rectangle.topRight() + QPointF { -10.0, 10.0 } );
+        labels_rectangle.moveRight( values_rectangle.left() - 10.0 );
+        labels_rectangle.moveTop( values_rectangle.top() );
 
-    auto background_rectangle = labels_rectangle.united( values_rectangle ).marginsAdded( QMarginsF { 5.0, 5.0, 5.0, 5.0 } );
+        auto background_rectangle = labels_rectangle.united( values_rectangle ).marginsAdded( QMarginsF { 5.0, 5.0, 5.0, 5.0 } );
 
-    painter.setPen( Qt::NoPen );
-    painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
-    painter.drawRoundedRect( background_rectangle, 5.0, 5.0 );
+        painter.setPen( Qt::NoPen );
+        painter.setBrush( QBrush { QColor { 255, 255, 255, 200 } } );
+        painter.drawRoundedRect( background_rectangle, 5.0, 5.0 );
 
-    painter.setPen( Qt::black );
-    painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
-    painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
+        painter.setPen( Qt::black );
+        painter.drawText( labels_rectangle, Qt::AlignLeft | Qt::AlignTop, labels_string );
+        painter.drawText( values_rectangle, Qt::AlignRight | Qt::AlignTop, values_string );
+    }
 
+    // Render highlighted element
     if( const auto element_index = _database.highlighted_element_index(); element_index.has_value() )
     {
         if( const auto feature = _histogram.feature() )

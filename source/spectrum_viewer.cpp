@@ -539,11 +539,7 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
         } );
 
         dataset_menu->addAction( "Export", [this] { DatasetExporter::execute_dialog( _database, _database.dataset() ); } );
-
-        if( _database.dataset()->spatial_metadata() )
-        {
-            dataset_menu->addAction( "Import (experimental)", &_database, &Database::request_additional_dataset_import );
-        }
+        dataset_menu->addAction( "Import (experimental)", &_database, &Database::request_additional_dataset_import );
 
         menu.exec( event->globalPosition().toPoint() );
 

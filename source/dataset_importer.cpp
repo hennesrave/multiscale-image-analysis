@@ -14,11 +14,8 @@
 #include <qcombobox.h>
 #include <qfiledialog.h>
 #include <qformlayout.h>
-#include <qlabel.h>
-#include <qlineedit.h>
 #include <qmessagebox.h>
 #include <qpushbutton.h>
-#include <qspinbox.h>
 
 QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& filepath )
 {
@@ -32,6 +29,10 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     if( linestring.find( "# SPCal Export" ) != std::string::npos )
     {
         return DatasetImporter::from_single_particle_csv( filepath );
+    }
+    else if( linestring.find( "SpTool version" ) == 0 )
+    {
+        return DatasetImporter::from_single_particle_composition( filepath );
     }
     else if( linestring.find( ";;;;Sample 1" ) != std::string::npos )
     {
@@ -993,6 +994,94 @@ QSharedPointer<Dataset> DatasetImporter::from_rpl( const std::filesystem::path& 
         return nullptr;
     }
 
+    return QSharedPointer<Dataset> { dataset };
+}
+QSharedPointer<Dataset> DatasetImporter::from_single_particle_composition( const std::filesystem::path& filepath )
+{
+    auto filestream = std::stringstream {};
+    auto linestring = std::string {};
+
+    filestream << std::fstream { filepath, std::ios::in }.rdbuf();
+    if( !filestream )
+    {
+        return nullptr;
+    }
+
+    std::getline( filestream, linestring, '\n' );
+    if( linestring.find( "SpTool version" ) != 0 )
+    {
+        Console::error( "Expected 'SpTool version' in first line" );
+        return nullptr;
+    }
+
+    std::getline( filestream, linestring, '\n' );
+    if( linestring != "SP_COMPOSITION_MATRIX_SPTOOL" )
+    {
+        Console::error( "Expected 'SP_COMPOSITION_MATRIX_SPTOOL' in second line" );
+        return nullptr;
+    }
+
+    // Read feature identifier
+    std::getline( filestream, linestring, '=' );
+    std::getline( filestream, linestring, '\n' );
+    const auto feature_identifier = linestring;
+    Console::info( "Feature identifier: " + feature_identifier );
+
+    // Read header
+    std::getline( filestream, linestring, '\n' );
+    const auto particle_count = static_cast<uint32_t>( std::count( linestring.begin(), linestring.end(), ',' ) - 2 );
+    Console::info( "Particle count: " + std::to_string( particle_count ) );
+
+    // Read rows
+    auto rows = std::vector<std::string> {};
+    while( std::getline( filestream, linestring, '\n' ) )
+    {
+        if( linestring.empty() )
+            break;
+
+        rows.push_back( linestring );
+    }
+    const auto channel_count = static_cast<uint32_t>( rows.size() );
+
+    // Read intensities
+    auto intensities = Matrix<double>::allocate( { particle_count, channel_count } );
+    auto channel_positions = Array<double>::allocate( channel_count );
+    auto channel_identifiers = Array<QString> { channel_count, QString {} };
+
+    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+    {
+        auto linestream     = std::stringstream { rows[channel_index] };
+        auto tokenstring    = std::string {};
+
+        std::getline( linestream, tokenstring, ',' );
+        channel_positions[channel_index] = std::stod( tokenstring );
+
+        std::getline( linestream, tokenstring, ',' );
+        channel_identifiers[channel_index] = QString::fromStdString(tokenstring);
+
+        std::getline( linestream, tokenstring, ',' ); // Skip 'Element' column
+
+        for( uint32_t particle_index = 0; particle_index < particle_count; ++particle_index )
+        {
+            std::getline( linestream, tokenstring, ',' );
+            intensities.value( { particle_index, channel_index } ) = tokenstring.empty() ? 0.0 : std::stod( tokenstring );
+        }
+    }
+
+    // Fix duplicate channel positions
+    for( uint32_t channel_index = 1; channel_index < channel_count; ++channel_index )
+    {
+        if( channel_positions[channel_index] == channel_positions[channel_index - 1] )
+        {
+            Console::warning( std::format( "Duplicate channel position detected: {}. Adding small offset to fix the problem.", std::to_string( channel_positions[channel_index] ) ) );
+            channel_positions[channel_index] += 1e-6;
+        }
+    }
+
+    // Create dataset
+    auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_identifier( QString::fromStdString( feature_identifier ) );
     return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_single_particle_csv( const std::filesystem::path& filepath )

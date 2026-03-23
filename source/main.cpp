@@ -60,67 +60,99 @@ int main( int argc, char** argv )
     public:
         void import_dataset( QSharedPointer<Dataset> dataset )
         {
-            auto segmentation = QSharedPointer<Segmentation> {};
-
             if( _databases.size() )
             {
                 const auto current_spatial_metadata = _databases.front()->dataset()->spatial_metadata();
                 const auto dataset_spatial_metadata = dataset->spatial_metadata();
 
-                auto buttons = QMessageBox::StandardButtons { QMessageBox::Yes };
-                auto message = QString {};
-
-                if( current_spatial_metadata->dimensions != dataset_spatial_metadata->dimensions )
+                if( current_spatial_metadata )
                 {
-                    buttons |= QMessageBox::Cancel;
-                    message = QString { "The dataset you are trying to import has " } +
-                        QString::number( dataset_spatial_metadata->dimensions.x ) +
-                        "x" +
-                        QString::number( dataset_spatial_metadata->dimensions.y ) +
-                        " pixels, while the currently open dataset has " +
-                        QString::number( current_spatial_metadata->dimensions.x ) +
-                        "x" +
-                        QString::number( current_spatial_metadata->dimensions.y ) +
-                        " pixels.\n\n";
+                    if( dataset_spatial_metadata )
+                    {
+                        auto buttons = QMessageBox::StandardButtons { QMessageBox::Yes };
+                        auto message = QString {};
+
+                        if( current_spatial_metadata->dimensions != dataset_spatial_metadata->dimensions )
+                        {
+                            buttons |= QMessageBox::Cancel;
+                            message = QString { "The dataset you are trying to import has " } +
+                                QString::number( dataset_spatial_metadata->dimensions.x ) +
+                                "x" +
+                                QString::number( dataset_spatial_metadata->dimensions.y ) +
+                                " pixels, while the currently open dataset has " +
+                                QString::number( current_spatial_metadata->dimensions.x ) +
+                                "x" +
+                                QString::number( current_spatial_metadata->dimensions.y ) +
+                                " pixels.\n\n";
+                        }
+                        else
+                        {
+                            buttons |= QMessageBox::No;
+                        }
+
+                        message += QString { "Do you want to align the new dataset to the currently open dataset?" };
+
+                        const auto response = QMessageBox::question(
+                            nullptr,
+                            "Dataset Alignment...",
+                            message,
+                            buttons
+                        );
+
+                        if( response == QMessageBox::Cancel )
+                        {
+                            return;
+                        }
+                        else if( response == QMessageBox::Yes )
+                        {
+                            auto dataset_alignment_dialog = DatasetAlignmentDialog { dataset, _databases.front()->dataset() };
+                            dataset_alignment_dialog.resize( 1600, 900 );
+
+                            if( dataset_alignment_dialog.exec() == QDialog::Rejected )
+                            {
+                                return;
+                            }
+
+                            if( dataset = dataset_alignment_dialog.aligned(); !dataset )
+                            {
+                                QMessageBox::critical( nullptr, "Dataset Alignment...", "Failed to align dataset.", QMessageBox::Ok );
+                                return;
+                            }
+                        }
+                    }
+                    else
+                    {
+                        QMessageBox::critical(
+                            nullptr,
+                            "Import Dataset...",
+                            "The dataset you are trying to import does not have spatial metadata, while the currently open dataset does have spatial metadata with " +
+                            QString::number( current_spatial_metadata->dimensions.x ) + "x" +
+                            QString::number( current_spatial_metadata->dimensions.y ) + " pixels.",
+                            QMessageBox::Ok
+                        );
+
+                        return;
+                    }
                 }
                 else
                 {
-                    buttons |= QMessageBox::No;
-                }
-
-                message += QString { "Do you want to align the new dataset to the currently open dataset?" };
-
-                const auto response = QMessageBox::question(
-                    nullptr,
-                    "Dataset Alignment...",
-                    message,
-                    buttons
-                );
-
-                if( response == QMessageBox::Cancel )
-                {
-                    return;
-                }
-                else if( response == QMessageBox::Yes )
-                {
-                    auto dataset_alignment_dialog = DatasetAlignmentDialog { dataset, _databases.front()->dataset() };
-                    dataset_alignment_dialog.resize( 1600, 900 );
-
-                    if( dataset_alignment_dialog.exec() == QDialog::Rejected )
+                    const auto current = _databases.front()->dataset();
+                    if( current->element_count() != dataset->element_count() )
                     {
-                        return;
-                    }
+                        QMessageBox::critical(
+                            nullptr,
+                            "Import Dataset...",
+                            "The dataset you are trying to import has " + QString::number( dataset->element_count() ) +
+                            " datapoints, while the currently open dataset has " + QString::number( current->element_count() ) + " datapoints.",
+                            QMessageBox::Ok
+                        );
 
-                    if( dataset = dataset_alignment_dialog.aligned(); !dataset )
-                    {
-                        QMessageBox::critical( nullptr, "Dataset Alignment...", "Failed to align dataset.", QMessageBox::Ok );
                         return;
                     }
                 }
-
-                segmentation = _databases.front()->segmentation();
             }
 
+            const auto segmentation = _databases.size() ? _databases.front()->segmentation() : QSharedPointer<Segmentation> {};
             _databases.emplace_back( new Database { dataset, segmentation } );
             auto& database = _databases.back();
 

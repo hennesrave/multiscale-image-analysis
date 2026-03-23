@@ -10,11 +10,9 @@
 #include <qactiongroup.h>
 #include <qevent.h>
 #include <qfiledialog.h>
-#include <qlabel.h>
 #include <qmenu.h>
 #include <qmessagebox.h>
 #include <qpainter.h>
-#include <qwidgetaction.h>
 
 BoxplotViewer::BoxplotViewer( Database& database ) : _database { database }
 {
@@ -56,6 +54,7 @@ void BoxplotViewer::update_feature( QSharedPointer<Feature> feature )
         if( _feature = feature )
         {
             QObject::connect( feature.get(), &Feature::extremes_changed, this, &BoxplotViewer::on_feature_extremes_changed );
+            QObject::connect( feature.get(), &Feature::moments_changed, this, &BoxplotViewer::on_feature_extremes_changed );
             this->on_feature_extremes_changed();
         }
 
@@ -302,16 +301,21 @@ void BoxplotViewer::on_feature_extremes_changed()
     if( auto feature = _feature.lock() )
     {
         const auto& extremes = feature->extremes();
-        if( extremes.minimum == extremes.maximum )
+        const auto& moments = feature->moments();
+
+        const auto minimum = std::min( extremes.minimum, moments.average - moments.standard_deviation );
+        const auto maximum = std::max( extremes.maximum, moments.average + moments.standard_deviation );
+
+        if( minimum == maximum )
         {
-            this->update_yaxis_bounds( { extremes.minimum - 1.0, extremes.maximum + 1.0 } );
-            this->update_yaxis_domain( { extremes.minimum - 1.0, extremes.maximum + 1.0 } );
+            this->update_yaxis_bounds( { minimum - 1.0, maximum + 1.0 } );
+            this->update_yaxis_domain( { minimum - 1.0, maximum + 1.0 } );
         }
         else
         {
-            const auto range = extremes.maximum - extremes.minimum;
-            this->update_yaxis_bounds( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
-            this->update_yaxis_domain( { extremes.minimum - 0.01 * range, extremes.maximum + 0.01 * range } );
+            const auto range = maximum - minimum;
+            this->update_yaxis_bounds( { minimum - 0.01 * range, maximum + 0.01 * range } );
+            this->update_yaxis_domain( { minimum - 0.01 * range, maximum + 0.01 * range } );
         }
     }
     else
