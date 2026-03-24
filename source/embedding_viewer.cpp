@@ -809,7 +809,7 @@ void EmbeddingViewer::import_embedding( const std::filesystem::path& filepath )
     const auto extension = filepath.extension();
     auto indices        = std::vector<uint32_t> {};
     auto coordinates    = std::vector<vec2<float>> {};
-    auto model          = py::object {};
+    auto model          = py::object { py::none {} };
 
     if( extension == ".csv" )
     {

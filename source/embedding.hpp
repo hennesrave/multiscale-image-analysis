@@ -53,7 +53,7 @@ signals:
 private:
     std::vector<uint32_t> _indices;
     std::vector<vec2<float>> _coordinates;
-    py::object _model;
+    py::object _model { py::none {} };
 
     std::unique_ptr<SearchTree> _search_tree;
 };

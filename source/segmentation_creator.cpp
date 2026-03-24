@@ -409,8 +409,14 @@ try:
         import igraph
         import umap
 
-        if leiden_model is None or not isinstance( leiden_model[0], umap.UMAP ):
-            raise ValueError( "Leiden algorithm requires a UMAP embedding" )
+        if leiden_model is None:
+            raise ValueError( "Leiden algorithm requires a UMAP embedding [error: 0x1]" )
+
+        if not isinstance( leiden_model, tuple ):
+            raise ValueError( "Leiden algorithm requires a UMAP embedding [error: 0x2]" )
+
+        if not isinstance( leiden_model[0], umap.UMAP ):
+            raise ValueError( "Leiden algorithm requires a UMAP embedding [error: 0x3]" )
 
         leiden_model, model_datapoint_indices = leiden_model
         model_datapoint_indices = np.intersect1d( element_indices, model_datapoint_indices, assume_unique=True )
