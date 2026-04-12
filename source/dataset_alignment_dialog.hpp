@@ -2,8 +2,6 @@
 #include <qdialog.h>
 #include <qsharedpointer.h>
 
-#include "utility.hpp"
-
 class Colormap1D;
 class Dataset;
 class DatasetChannelsFeature;

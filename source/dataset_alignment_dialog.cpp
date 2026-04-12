@@ -3,11 +3,15 @@
 #include "colormap.hpp"
 #include "dataset.hpp"
 #include "feature.hpp"
+#include "number_input.hpp"
 
 #include <qactiongroup.h>
 #include <qevent.h>
+#include <qlabel.h>
+#include <qlayout.h>
 #include <qmenu.h>
 #include <qpainter.h>
+#include <qwidgetaction.h>
 
 #include <iostream>
 
@@ -74,6 +78,9 @@ DatasetAlignmentDialog::DatasetAlignmentDialog( QSharedPointer<Dataset> source, 
 
     _source_colormap->update_feature( _source_feature );
     _target_colormap->update_feature( _target_feature );
+
+    QObject::connect( _source_colormap.get(), &Colormap1D::colors_changed, this, qOverload<>( &QWidget::update ) );
+    QObject::connect( _target_colormap.get(), &Colormap1D::colors_changed, this, qOverload<>( &QWidget::update ) );
 }
 
 QSharedPointer<Dataset> DatasetAlignmentDialog::source() const noexcept
@@ -233,6 +240,95 @@ void DatasetAlignmentDialog::mouseReleaseEvent( QMouseEvent* event )
     if( event->button() == Qt::RightButton && _interaction_mode == InteractionMode::eNone )
     {
         auto context_menu = QMenu {};
+
+        {
+            struct Axis
+            {
+                vec2<double> bounds;
+                vec2<double> domain;
+            } _xaxis, _yaxis;
+
+            _xaxis.bounds.x = _source_colormap->lower().automatic_value();
+            _xaxis.bounds.y = _source_colormap->upper().automatic_value();
+            _xaxis.domain.x = _source_colormap->lower().override_value().value_or( _xaxis.bounds.x );
+            _xaxis.domain.y = _source_colormap->upper().override_value().value_or( _xaxis.bounds.y );
+
+            _yaxis.bounds.x = _target_colormap->lower().automatic_value();
+            _yaxis.bounds.y = _target_colormap->upper().automatic_value();
+            _yaxis.domain.x = _target_colormap->lower().override_value().value_or( _yaxis.bounds.x );
+            _yaxis.domain.y = _target_colormap->upper().override_value().value_or( _yaxis.bounds.y );
+
+            auto xaxis_label = new QLabel { "  Source" };
+            auto xaxis_label_action = new QWidgetAction { &context_menu };
+            xaxis_label_action->setDefaultWidget( xaxis_label );
+
+            auto yaxis_label = new QLabel { "  Target" };
+            auto yaxis_label_action = new QWidgetAction { &context_menu };
+            yaxis_label_action->setDefaultWidget( yaxis_label );
+
+            auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _xaxis.domain.x == _xaxis.bounds.x ? std::nullopt : std::optional<double> { _xaxis.domain.x } };
+            auto xaxis_upper = new Override<double> { _xaxis.bounds.y, _xaxis.domain.y == _xaxis.bounds.y ? std::nullopt : std::optional<double> { _xaxis.domain.y } };
+
+            auto yaxis_lower = new Override<double> { _yaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
+            auto yaxis_upper = new Override<double> { _yaxis.bounds.y, _yaxis.domain.y == _yaxis.bounds.y ? std::nullopt : std::optional<double> { _yaxis.domain.y } };
+
+            auto xaxis_lower_input = new NumberInput { *xaxis_lower, [=] ( double value ) { return value >= _xaxis.bounds.x && value < xaxis_upper->value(); } };
+            auto xaxis_upper_input = new NumberInput { *xaxis_upper, [=] ( double value ) { return value > xaxis_lower->value() && value <= _xaxis.bounds.y; } };
+
+            auto yaxis_lower_input = new NumberInput { *yaxis_lower, [=] ( double value ) { return value >= _yaxis.bounds.x && value < yaxis_upper->value(); } };
+            auto yaxis_upper_input = new NumberInput { *yaxis_upper, [=] ( double value ) { return value > yaxis_lower->value() && value <= _yaxis.bounds.y; } };
+
+            xaxis_lower->setParent( xaxis_lower_input );
+            xaxis_upper->setParent( xaxis_upper_input );
+            yaxis_lower->setParent( yaxis_lower_input );
+            yaxis_upper->setParent( yaxis_upper_input );
+
+            auto xaxis_container_widget = new QWidget { &context_menu };
+            auto xaxis_container_layout = new QHBoxLayout { xaxis_container_widget };
+            xaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
+            xaxis_container_layout->setSpacing( 3 );
+            xaxis_container_layout->addWidget( xaxis_lower_input );
+            xaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
+            xaxis_container_layout->addWidget( xaxis_upper_input );
+
+            auto yaxis_container_widget = new QWidget { &context_menu };
+            auto yaxis_container_layout = new QHBoxLayout { yaxis_container_widget };
+            yaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
+            yaxis_container_layout->setSpacing( 3 );
+            yaxis_container_layout->addWidget( yaxis_lower_input );
+            yaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
+            yaxis_container_layout->addWidget( yaxis_upper_input );
+
+            auto xaxis_widget_action = new QWidgetAction { &context_menu };
+            xaxis_widget_action->setDefaultWidget( xaxis_container_widget );
+
+            auto yaxis_widget_action = new QWidgetAction { &context_menu };
+            yaxis_widget_action->setDefaultWidget( yaxis_container_widget );
+
+            QObject::connect( xaxis_lower, &Override<double>::value_changed, this, [=]
+            {
+                _source_colormap->lower().update_override_value( xaxis_lower->value() );
+            } );
+            QObject::connect( xaxis_upper, &Override<double>::value_changed, this, [=]
+            {
+                _source_colormap->upper().update_override_value( xaxis_upper->value() );
+            } );
+            QObject::connect( yaxis_lower, &Override<double>::value_changed, this, [=]
+            {
+                _target_colormap->lower().update_override_value( yaxis_lower->value() );
+            } );
+            QObject::connect( yaxis_upper, &Override<double>::value_changed, this, [=]
+            {
+                _target_colormap->upper().update_override_value( yaxis_upper->value() );
+            } );
+
+            auto menu_axes = context_menu.addMenu( "Colormaps" );
+            menu_axes->addAction( xaxis_label_action );
+            menu_axes->addAction( xaxis_widget_action );
+            menu_axes->addSeparator();
+            menu_axes->addAction( yaxis_label_action );
+            menu_axes->addAction( yaxis_widget_action );
+        }
 
         auto interpolation_menu = context_menu.addMenu( "Interpolation Mode" );
 
