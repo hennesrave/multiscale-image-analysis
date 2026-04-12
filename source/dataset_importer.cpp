@@ -44,7 +44,14 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     }
     else if( std::regex_search( filename.string(), std::regex { R"([A-z]+?\d+?\.csv)" } ) )
     {
-        return DatasetImporter::from_matrix( filepath );
+        if( linestring.find( "X,Y,I" ) != std::string::npos )
+        {
+            //return DatasetImporter::from_xyz( filepath );
+        }
+        else
+        {
+            return DatasetImporter::from_matrix( filepath );
+        }
     }
 
     QMessageBox::critical( nullptr, "", "Unsupported file format" );
@@ -242,6 +249,9 @@ QSharedPointer<Dataset> DatasetImporter::from_hdf5( const std::filesystem::path&
 }
 QSharedPointer<Dataset> DatasetImporter::from_matrix( const std::filesystem::path& base_filepath )
 {
+    auto filepaths = std::vector<std::filesystem::path> {};
+
+    const auto filename_regex = std::regex { R"(^(.+?(\d+?))\.csv$)" };
     const auto directory = base_filepath.parent_path();
     for( const auto& entry : std::filesystem::directory_iterator { directory } )
     {
@@ -251,16 +261,120 @@ QSharedPointer<Dataset> DatasetImporter::from_matrix( const std::filesystem::pat
         }
 
         const auto filename = entry.path().filename().string();
-        const auto filename_regex = std::regex { R"(^(.+?(\d+?))\.csv$)" };
         auto matches = std::smatch {};
         if( !std::regex_match( filename, matches, filename_regex ) )
         {
             continue;
         }
-        Console::info( std::format( "{} {}", matches[1].str(), matches[2].str() ) );
+
+        filepaths.push_back( entry.path() );
     }
 
-    return nullptr;
+    auto channel_count          = static_cast<uint32_t>( filepaths.size() );
+    auto channel_positions      = Array<double>::allocate( channel_count );
+    auto channel_identifiers    = Array<QString> { channel_count, QString {} };
+
+    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+    {
+        const auto& filepath    = filepaths[channel_index];
+        const auto filename     = filepath.filename().string();
+        auto matches            = std::smatch {};
+        std::regex_match( filename, matches, filename_regex );
+
+        channel_positions[channel_index]    = std::stod( matches[2].str() );
+        channel_identifiers[channel_index]  = QString::fromStdString( matches[1].str() );
+    }
+
+    auto permutation = Array<uint32_t>::allocate( channel_count );
+    std::iota( permutation.begin(), permutation.end(), 0 );
+    std::sort( permutation.begin(), permutation.end(), [&] ( uint32_t a, uint32_t b )
+    {
+        return channel_positions[a] < channel_positions[b];
+    } );
+
+    utility::apply_permutation( filepaths.data(), filepaths.data() + channel_count, permutation.begin() );
+    utility::apply_permutation( channel_positions.data(), channel_positions.data() + channel_count, permutation.begin() );
+    utility::apply_permutation( channel_identifiers.data(), channel_identifiers.data() + channel_count, permutation.begin() );
+
+    auto dimensions         = vec2<uint32_t> { 0, 0 };
+    auto spatial_metadata   = std::unique_ptr<Dataset::SpatialMetadata> {};
+    auto intensities        = Matrix<double> {};
+
+    for( uint32_t channel_index = 0; channel_index < filepaths.size(); ++channel_index )
+    {
+        const auto& filepath = filepaths[channel_index];
+
+        auto filestream = std::ifstream { filepath, std::ios::in };
+        auto lines      = std::vector<std::string> {};
+        auto linestring = std::string {};
+        while( std::getline( filestream, linestring, '\n' ) )
+        {
+            if( !linestring.empty() )
+            {
+                lines.push_back( linestring );
+            }
+        }
+
+        if( lines.empty() )
+        {
+            QMessageBox::critical( nullptr, "", "Failed to import dataset: empty file" );
+            return nullptr;
+        }
+
+        auto current_dimensions = vec2<uint32_t> {
+            static_cast<uint32_t>( std::count( lines[0].begin(), lines[0].end(), ',' ) + 1 ),
+            static_cast<uint32_t>( lines.size() )
+        };
+
+        if( intensities.empty() )
+        {
+            dimensions = current_dimensions;
+            spatial_metadata.reset( new Dataset::SpatialMetadata { dimensions.x, dimensions.y } );
+            intensities = Matrix<double>::allocate( { dimensions.x * dimensions.y, channel_count } );
+
+            Console::info( std::format( "Importing dataset with dimensions {} x {} and {} channels", dimensions.x, dimensions.y, channel_count ) );
+        }
+        else
+        {
+            if( false && current_dimensions != dimensions )
+            {
+                Console::error( std::format( "File {} has incompatible dimensions ({} x {})", filepath.filename().string(), current_dimensions.x, current_dimensions.y ) );
+                QMessageBox::critical( nullptr, "", "Failed to import dataset: incompatible dimensions" );
+                return nullptr;
+            }
+        }
+
+        for( uint32_t y = 0; y < lines.size(); ++y )
+        {
+            auto linestream = std::stringstream { lines[y] };
+            auto tokenstring = std::string {};
+
+            for( uint32_t x = 0; x < dimensions.x; ++x )
+            {
+                //if( !std::getline( linestream, tokenstring, ',' ) )
+                //{
+                //    Console::error( std::format( "Failed to parse value at ({}, {}) in file {}", x, y, filepath.string() ) );
+                //    QMessageBox::critical( nullptr, "", "Failed to import dataset: invalid format" );
+                //    return nullptr;
+                //}
+                if( !std::getline( linestream, tokenstring, ',' ) )
+                {
+                    tokenstring.clear();
+                }
+
+                const auto element_index = spatial_metadata->element_index( vec2<uint32_t> { x, y } );
+                const auto value = tokenstring.empty() ? 0.0 : std::stod( tokenstring );
+
+                intensities.update_value( { element_index, channel_index }, value );
+            }
+        }
+    }
+
+    auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_spatial_metadata( std::move( spatial_metadata ) );
+
+    return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_mia( const std::filesystem::path& filepath )
 {
@@ -1057,7 +1171,7 @@ QSharedPointer<Dataset> DatasetImporter::from_single_particle_composition( const
         channel_positions[channel_index] = std::stod( tokenstring );
 
         std::getline( linestream, tokenstring, ',' );
-        channel_identifiers[channel_index] = QString::fromStdString(tokenstring);
+        channel_identifiers[channel_index] = QString::fromStdString( tokenstring );
 
         std::getline( linestream, tokenstring, ',' ); // Skip 'Element' column
 
@@ -1163,6 +1277,127 @@ QSharedPointer<Dataset> DatasetImporter::from_single_particle_csv( const std::fi
 
     auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
     dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    return QSharedPointer<Dataset> { dataset };
+}
+QSharedPointer<Dataset> DatasetImporter::from_xyz( const std::filesystem::path& base_filepath )
+{
+    auto filepaths = std::vector<std::filesystem::path> {};
+
+    const auto filename_regex = std::regex { R"(^(.+?(\d+?))\.csv$)" };
+    const auto directory = base_filepath.parent_path();
+    for( const auto& entry : std::filesystem::directory_iterator { directory } )
+    {
+        if( !entry.is_regular_file() )
+        {
+            continue;
+        }
+
+        const auto filename = entry.path().filename().string();
+        auto matches = std::smatch {};
+        if( !std::regex_match( filename, matches, filename_regex ) )
+        {
+            continue;
+        }
+
+        filepaths.push_back( entry.path() );
+    }
+
+    auto channel_count          = static_cast<uint32_t>( filepaths.size() );
+    auto channel_positions      = Array<double>::allocate( channel_count );
+    auto channel_identifiers    = Array<QString> { channel_count, QString {} };
+
+    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+    {
+        const auto& filepath    = filepaths[channel_index];
+        const auto filename     = filepath.filename().string();
+        auto matches            = std::smatch {};
+        std::regex_match( filename, matches, filename_regex );
+
+        channel_positions[channel_index]    = std::stod( matches[2].str() );
+        channel_identifiers[channel_index]  = QString::fromStdString( matches[1].str() );
+    }
+
+    auto permutation = Array<uint32_t>::allocate( channel_count );
+    std::iota( permutation.begin(), permutation.end(), 0 );
+    std::sort( permutation.begin(), permutation.end(), [&] ( uint32_t a, uint32_t b )
+    {
+        return channel_positions[a] < channel_positions[b];
+    } );
+
+    utility::apply_permutation( filepaths.data(), filepaths.data() + channel_count, permutation.begin() );
+    utility::apply_permutation( channel_positions.data(), channel_positions.data() + channel_count, permutation.begin() );
+    utility::apply_permutation( channel_identifiers.data(), channel_identifiers.data() + channel_count, permutation.begin() );
+
+    auto coordinates_and_intensities = std::vector<std::vector<std::array<double, 3>>>( channel_count );
+    auto coordinates_unique_x = std::set<double> {};
+    auto coordinates_unique_y = std::set<double> {};
+
+    for( uint32_t channel_index = 0; channel_index < filepaths.size(); ++channel_index )
+    {
+        const auto& filepath    = filepaths[channel_index];
+        auto filestream         = std::ifstream { filepath, std::ios::in };
+        auto linestring         = std::string {};
+
+        std::getline( filestream, linestring, '\n' ); // skip header
+
+        while( std::getline( filestream, linestring, '\n' ) )
+        {
+            if( linestring.empty() )
+            {
+                continue;
+            }
+
+            auto linestream = std::stringstream { linestring };
+            auto tokenstring = std::string {};
+
+            std::getline( linestream, tokenstring, ',' );
+            const auto x = std::stod( tokenstring );
+
+            std::getline( linestream, tokenstring, ',' );
+            const auto y = std::stod( tokenstring );
+
+            std::getline( linestream, tokenstring, '\n' );
+            const auto intensity = std::stod( tokenstring );
+
+            coordinates_and_intensities[channel_index].push_back( std::array<double, 3> { x, y, intensity } );
+            coordinates_unique_x.insert( x );
+            coordinates_unique_y.insert( y );
+        }
+    }
+
+    auto dimensions = vec2<uint32_t> {
+        static_cast<uint32_t>( coordinates_unique_x.size() ),
+        static_cast<uint32_t>( coordinates_unique_y.size() )
+    };
+    auto spatial_metadata   = std::make_unique<Dataset::SpatialMetadata>( dimensions.x, dimensions.y );
+    auto intensities        = Matrix<double> { { dimensions.x * dimensions.y, channel_count }, 0.0 };
+
+    Console::info( std::format( "Dataset dimensions: {}x{}x{}", dimensions.x, dimensions.y, channel_count ) );
+
+    auto coordinates_sorted_x = std::vector<double>( coordinates_unique_x.begin(), coordinates_unique_x.end() );
+    auto coordinates_sorted_y = std::vector<double>( coordinates_unique_y.begin(), coordinates_unique_y.end() );
+
+    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+    {
+        for( const auto& [x, y, intensity] : coordinates_and_intensities[channel_index] )
+        {
+            const auto iterator_x = std::lower_bound( coordinates_sorted_x.begin(), coordinates_sorted_x.end(), x );
+            const auto iterator_y = std::lower_bound( coordinates_sorted_y.begin(), coordinates_sorted_y.end(), y );
+
+            const auto coordinates = vec2<uint32_t> {
+                static_cast<uint32_t>( std::distance( coordinates_sorted_x.begin(), iterator_x ) ),
+                static_cast<uint32_t>( std::distance( coordinates_sorted_y.begin(), iterator_y ) )
+            };
+
+            const auto element_index = spatial_metadata->element_index( coordinates );
+            intensities.update_value( { element_index, channel_index }, intensity );
+        }
+    }
+
+    auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_spatial_metadata( std::move( spatial_metadata ) );
+
     return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_zarr( const std::filesystem::path& filepath )

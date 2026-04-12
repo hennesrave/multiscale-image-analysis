@@ -254,15 +254,27 @@ except Exception as exception:
 
     segmentation_menu->addAction( "Import", [this]
     {
-        const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "JSON Files (*.json)", nullptr );
+        const auto filepath = QFileDialog::getOpenFileName( nullptr, "Import Segmentation", "", "*.mia;*.json", nullptr );
         if( !filepath.isEmpty() )
         {
             auto file = QFile { filepath };
             if( file.open( QFile::ReadOnly | QFile::Text ) )
             {
-                auto stream = QTextStream { &file };
-                const auto json = nlohmann::json::parse( stream.readAll().toStdString() );
-                _segmentation->deserialize( json );
+                if( filepath.endsWith( ".mia" ) )
+                {
+                    auto stream = MIAFileStream { filepath.toStdWString(), std::ios::in };
+                    _segmentation->deserialize( stream );
+                }
+                else if( filepath.endsWith( ".json" ) )
+                {
+                    auto stream = QTextStream { &file };
+                    const auto json = nlohmann::json::parse( stream.readAll().toStdString() );
+                    _segmentation->deserialize( json );
+                }
+                else
+                {
+                    QMessageBox::critical( nullptr, "", "Unsupported file format." );
+                }
             }
             else
             {
@@ -272,15 +284,27 @@ except Exception as exception:
     } );
     segmentation_menu->addAction( "Export", [this]
     {
-        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Segmentation", "", "JSON Files (*.json)", nullptr );
+        const auto filepath = QFileDialog::getSaveFileName( nullptr, "Export Segmentation", "", "*.mia;;*.json", nullptr );
         if( !filepath.isEmpty() )
         {
             auto file = QFile { filepath };
             if( file.open( QFile::WriteOnly | QFile::Text ) )
             {
-                auto stream = QTextStream { &file };
-                const auto json = _segmentation->serialize();
-                stream << QString::fromStdString( json.dump( 4 ) );
+                if( filepath.endsWith( ".mia" ) )
+                {
+                    auto stream = MIAFileStream { filepath.toStdWString(), std::ios::out };
+                    _segmentation->serialize( stream );
+                }
+                else if( filepath.endsWith( ".json" ) )
+                {
+                    auto stream = QTextStream { &file };
+                    const auto json = _segmentation->serialize();
+                    stream << QString::fromStdString( json.dump( 4 ) );
+                }
+                else
+                {
+                    QMessageBox::critical( nullptr, "", "Unsupported file format." );
+                }
             }
             else
             {

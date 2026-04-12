@@ -96,17 +96,17 @@ SpectrumViewer::SpectrumViewer( Database& database ) : _database { database }
     QObject::connect( this, &SpectrumViewer::hovered_feature_changed, this, qOverload<>( &QWidget::update ) );
 }
 
-void SpectrumViewer::paintEvent( QPaintEvent* event )
+void SpectrumViewer::render( QPainter& painter )
 {
-    auto painter = QPainter { this };
     painter.setRenderHint( QPainter::Antialiasing, true );
+
+    const auto content_rectangle = this->content_rectangle();
     painter.setClipRect( this->content_rectangle() );
 
     const auto dataset = _database.dataset();
     const auto segmentation = _database.segmentation();
     const auto highlighted_element_index = _database.highlighted_element_index();
     const auto highlighted_channel_index = _database.highlighted_channel_index();
-    const auto content_rectangle = this->content_rectangle();
 
     // Gather spectra
     auto polyline = QPolygonF {};
@@ -344,8 +344,8 @@ void SpectrumViewer::paintEvent( QPaintEvent* event )
         _hovered_imported_spectrum_index = hovered_value.imported_spectrum_index;
     }
 
-    painter.setClipRect( this->rect() );
-    PlottingWidget::paintEvent( event );
+    painter.setClipRect( painter.viewport() );
+    PlottingWidget::render( painter );
 }
 
 void SpectrumViewer::mousePressEvent( QMouseEvent* event )

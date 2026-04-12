@@ -18,7 +18,7 @@ public:
     static QSharedPointer<Dataset> from_rpl( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_single_particle_composition( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_single_particle_csv( const std::filesystem::path& filepath );
-
+    static QSharedPointer<Dataset> from_xyz( const std::filesystem::path& filepath );
     static QSharedPointer<Dataset> from_zarr( const std::filesystem::path& filepath );
 
     static QSharedPointer<Dataset> execute_dialog();

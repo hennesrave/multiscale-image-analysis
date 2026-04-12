@@ -2,10 +2,14 @@
 
 #include "number_input.hpp"
 
+#include <qapplication.h>
+#include <qclipboard.h>
+#include <qbuffer.h>
 #include <qevent.h>
 #include <qlabel.h>
 #include <qlayout.h>
 #include <qmenu.h>
+#include <qmimedata.h>
 #include <qpainter.h>
 #include <qwidgetaction.h>
 
@@ -85,7 +89,10 @@ void PlottingWidget::paintEvent( QPaintEvent* event )
     QWidget::paintEvent( event );
 
     auto painter = QPainter { this };
-
+    this->render( painter );
+}
+void PlottingWidget::render( QPainter& painter )
+{
     if( _xaxis.visible )
     {
         painter.setPen( QPen { QBrush { config::palette[700] }, static_cast<qreal>( _linewidth ) } );
@@ -428,6 +435,42 @@ void PlottingWidget::populate_context_menu( QMenu& context_menu )
     auto menu_axes = context_menu.addMenu( "Axis Settings" );
     menu_axes->addAction( xaxis_widget_action );
     menu_axes->addAction( yaxis_widget_action );
+
+    //auto screenshot = context_menu.addAction( "Screenshot", [this]
+    //{
+    //    const auto original_font = this->font();
+
+    //    auto font = original_font;
+    //    font.setPixelSize( static_cast<int>( std::ceil( 12.0 / 72.0 * 300.0 ) ) );
+    //    this->setFont( font );
+
+    //    auto viewport = QRect { 0, 0, 1024, 1024 };
+    //    this->update_content_rectangle( viewport );
+
+    //    auto pixmap = QPixmap { viewport.size() };
+    //    pixmap.fill( Qt::transparent );
+
+    //    auto painter = QPainter { &pixmap };
+    //    painter.setFont( font );
+
+    //    this->render( painter );
+
+    //    // Workaround for copying and image with transparency into the clipboard
+    //    // https://stackoverflow.com/questions/1260253/how-do-i-put-an-qimage-with-transparency-onto-the-clipboard-for-another-applicat
+    //    auto mime_data = new QMimeData();
+    //    auto image_data = QByteArray {};
+    //    auto image_buffer = QBuffer { &image_data };
+
+    //    image_buffer.open( QIODevice::WriteOnly );
+    //    pixmap.save( &image_buffer, "PNG" );
+    //    image_buffer.close();
+    //    mime_data->setData( "PNG", image_data );
+
+    //    QApplication::clipboard()->setMimeData( mime_data );
+
+    //    this->setFont( original_font );
+    //    this->compute_content_rectangle();
+    //} );
 }
 
 int PlottingWidget::compute_xaxis_height() const noexcept
@@ -544,7 +587,11 @@ int PlottingWidget::stepsize_to_precision( double stepsize ) const noexcept
 
 void PlottingWidget::compute_content_rectangle() noexcept
 {
-    _content_rectangle = this->rect().marginsRemoved( _margins );
+    this->update_content_rectangle( this->rect() );
+}
+void PlottingWidget::update_content_rectangle( const QRect& viewport ) noexcept
+{
+    _content_rectangle = viewport.marginsRemoved( _margins );
 
     if( _xaxis.visible )
     {

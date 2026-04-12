@@ -252,6 +252,71 @@ bool Segmentation::deserialize( const nlohmann::json& json )
     return true;
 }
 
+void Segmentation::serialize( MIAFileStream& stream ) const
+{
+    const auto element_count = this->element_count();
+    stream.write( element_count );
+
+    const auto segment_count = static_cast<uint32_t>( _segments.size() );
+    stream.write( segment_count );
+
+    for( uint32_t segment_number = 0; segment_number < segment_count; ++segment_number )
+    {
+        const auto& segment = _segments[segment_number];
+        stream.write( segment->number() );
+        stream.write( segment->element_count() );
+        stream.write( segment->_identifier.override_value().value_or( "" ).toStdString() );
+        stream.write( segment->color().qcolor().name().toStdString() );
+    }
+
+    stream.write( _current_preset_color_index );
+    stream.write( _segment_numbers.data(), _segment_numbers.size() * sizeof( uint32_t ) );
+}
+bool Segmentation::deserialize( MIAFileStream& stream )
+{
+    const auto element_count = stream.read<uint32_t>();
+    if( element_count != this->element_count() )
+    {
+        Console::error( std::format( "Invalid element_count {} (expected {})", element_count, this->element_count() ) );
+        return false;
+    }
+
+    const auto segment_count = stream.read<uint32_t>();
+    while( this->segment_count() < segment_count )
+    {
+        this->append_segment();
+    }
+
+    auto element_counts = std::vector<uint32_t>( segment_count );
+    for( uint32_t i = 0; i < segment_count; ++i )
+    {
+        const auto segment_number = stream.read<uint32_t>();
+        const auto element_count = stream.read<uint32_t>();
+        const auto segment_identifier = QString::fromStdString( stream.read<std::string>() );
+        const auto segment_color = QColor { QString::fromStdString( stream.read<std::string>() ) };
+
+        element_counts[i] = element_count;
+        _segments[segment_number]->update_identifier( segment_identifier.isEmpty() ? std::nullopt : std::optional<QString> { segment_identifier } );
+        _segments[segment_number]->update_color( segment_number == 0 ? vec4<float> {} : vec4<float> { segment_color.redF(), segment_color.greenF(), segment_color.blueF(), segment_color.alphaF() } );
+    }
+
+    _current_preset_color_index = stream.read<uint32_t>();
+    stream.read( _segment_numbers.data(), _segment_numbers.size() * sizeof( uint32_t ) );
+
+    for( uint32_t segment_number = 0; segment_number < segment_count; ++segment_number )
+    {
+        _segments[segment_number]->update_element_count( element_counts[segment_number] );
+    }
+
+    while( this->segment_count() > segment_count )
+    {
+        this->remove_segment( _segments.back() );
+    }
+
+    emit segment_numbers_changed();
+    return true;
+}
+
 Segmentation::Editor Segmentation::editor()
 {
     return Editor { *this };

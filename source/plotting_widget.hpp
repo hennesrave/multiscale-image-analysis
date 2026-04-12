@@ -33,6 +33,7 @@ public:
     virtual void resizeEvent( QResizeEvent* event ) override;
     virtual void wheelEvent( QWheelEvent* event ) override;
     virtual void paintEvent( QPaintEvent* event ) override;
+    virtual void render( QPainter& painter );
 
     virtual void paint_xaxis_ticks( QPainter& painter ) const;
     virtual void paint_yaxis_ticks( QPainter& painter ) const;
@@ -108,6 +109,7 @@ protected:
 
 private:
     void compute_content_rectangle() noexcept;
+    void update_content_rectangle( const QRect& viewport ) noexcept;
 
     QMargins _margins { 5, 5, 5, 5 };
     int _linewidth = 1;

@@ -82,6 +82,13 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     pca_layout->addRow( "Random State", pca_random_state );
 
     // Initialize UMAP properties
+    auto umap_preprocessing = new QComboBox {};
+    umap_preprocessing->addItem( "Disabled", 0 );
+    for( int i = 2; i <= 50; ++i )
+    {
+        umap_preprocessing->addItem( "PCA (" + QString::number( i ) + " components)", i );
+    }
+
     auto umap_neighbors = new QSpinBox {};
     umap_neighbors->setRange( 2, static_cast<int>( segmentation->element_count() - 1 ) );
     umap_neighbors->setValue( 15 );
@@ -95,6 +102,16 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     umap_metric->addItem( "Euclidean" );
     umap_metric->addItem( "Cosine" );
 
+    auto umap_initialization = new QComboBox {};
+    umap_initialization->addItem( "Spectral" );
+    umap_initialization->addItem( "Random" );
+    umap_initialization->addItem( "PCA" );
+
+    auto umap_random_state_enabled = new QComboBox {};
+    umap_random_state_enabled->addItem( "Disabled", false );
+    umap_random_state_enabled->addItem( "Enabled", true );
+    umap_random_state_enabled->setCurrentIndex( 1 );
+
     auto umap_random_state = new QSpinBox {};
     umap_random_state->setRange( std::numeric_limits<int>::lowest(), std::numeric_limits<int>::max() );
     umap_random_state->setValue( 42 );
@@ -104,14 +121,28 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     umap_subsampling->setSingleStep( 0.01 );
     umap_subsampling->setValue( 1.0 );
 
+    //auto umap_batchsize = new QSpinBox {};
+    //umap_batchsize->setRange( 1, static_cast<int>( segmentation->element_count() ) );
+    //umap_batchsize->setValue( 100'000 );
+
     auto umap_widget = new QWidget {};
     auto umap_layout = new QFormLayout { umap_widget };
     umap_layout->setContentsMargins( 0, 0, 0, 0 );
+    umap_layout->addRow( "Preprocessing", umap_preprocessing );
     umap_layout->addRow( "Neighbors", umap_neighbors );
     umap_layout->addRow( "Minimum Distance", umap_minimum_distance );
     umap_layout->addRow( "Metric", umap_metric );
-    umap_layout->addRow( "Random State", umap_random_state );
+    umap_layout->addRow( "Initialization", umap_initialization );
+    umap_layout->addRow( "Random State", umap_random_state_enabled );
+    umap_layout->addRow( "", umap_random_state );
     umap_layout->addRow( "Subsampling", umap_subsampling );
+    //umap_layout->addRow( "Batchsize", umap_batchsize );
+
+    QObject::connect( umap_random_state_enabled, &QComboBox::currentIndexChanged, [umap_random_state_enabled, umap_random_state]
+    {
+        const auto enabled = umap_random_state_enabled->currentData().toBool();
+        umap_random_state->setEnabled( enabled );
+    } );
 
     // Initialize t-SNE properties
     auto tsne_perplexity = new QDoubleSpinBox {};
@@ -503,11 +534,15 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
 
             "pca_random_state"_a = pca_random_state->value(),
 
+            "umap_preprocessing"_a = umap_preprocessing->currentData().toInt(),
             "umap_neighbors"_a = static_cast<int>( umap_neighbors->value() ),
             "umap_minimum_distance"_a = umap_minimum_distance->value(),
             "umap_metric"_a = umap_metric->currentText().toLower().toStdString(),
+            "umap_initialization"_a = umap_initialization->currentText().toLower().toStdString(),
+            "umap_random_state_enabled"_a = umap_random_state_enabled->currentData().toBool(),
             "umap_random_state"_a = umap_random_state->value(),
             "umap_subsampling"_a = umap_subsampling->value(),
+            //"umap_batchsize"_a = umap_batchsize->value(),
 
             "tsne_perplexity"_a = tsne_perplexity->value(),
             "tsne_random_state"_a = tsne_random_state->value(),
@@ -671,14 +706,38 @@ try:
         print( f"[Embedding] Explained variance: {model.explained_variance_ratio_} (total: {np.sum(model.explained_variance_ratio_):.3f}) " )
 
     elif algorithm == "UMAP":
+
+        if umap_preprocessing > 0:
+            print( f"[Embedding] Applying PCA initialization with {umap_preprocessing} components before UMAP embedding " )
+            if umap_preprocessing >= combined_dataset.shape[1]:
+                print( f"[Embedding] PCA initialization: number of components is greater than or equal to the number of dimensions in the dataset, skipping PCA initialization " )
+            else:
+                from sklearn.decomposition import PCA
+                model = PCA(
+                    n_components    = umap_preprocessing,
+                    random_state    = umap_random_state
+                )
+                combined_dataset = model.fit_transform( combined_dataset ).astype( np.float32 )
+                print( f"[Embedding] PCA initialization: explained variance: {model.explained_variance_ratio_} (total: {np.sum(model.explained_variance_ratio_):.3f}) " )        
+
         import umap
+
+        print( f"[Embedding] Training UMAP model with")
+        print( f"[Embedding]  >> neighbors              = {umap_neighbors}")
+        print( f"[Embedding]  >> minimum distance       = {umap_minimum_distance}")
+        print( f"[Embedding]  >> metric                 = {umap_metric}")
+        print( f"[Embedding]  >> initialization         = {umap_initialization}")
+        print( f"[Embedding]  >> random state           = {umap_random_state if umap_random_state_enabled else "None"}")
+        print( f"[Embedding]  >> subsampling            = {umap_subsampling}")
+
         model = umap.UMAP(
             n_components	= 2,
             n_neighbors		= umap_neighbors,
             min_dist		= umap_minimum_distance,
-            metric			= umap_metric,                
-            random_state	= umap_random_state,
-            n_jobs			= 1,
+            metric			= umap_metric,
+            init            = umap_initialization,
+            random_state	= umap_random_state     if umap_random_state_enabled else None,
+            n_jobs			= 1                     if umap_random_state_enabled else -1,
             verbose			= True
         )
         
@@ -693,7 +752,19 @@ try:
             model_datapoint_indices = model_datapoint_indices[subsampling_filter]
             
             model.fit( subsampling_dataset )
-            embedding = model.transform( combined_dataset ).astype( np.float32 )
+
+            umap_batchsize = combined_dataset.shape[0]
+            if umap_batchsize >= combined_dataset.shape[0]:
+                embedding = model.transform( combined_dataset ).astype( np.float32 )
+            else:
+                embedding = np.zeros( ( combined_dataset.shape[0], 2 ), dtype=np.float32 )
+
+                batch_count = ( combined_dataset.shape[0] + umap_batchsize - 1 ) // umap_batchsize
+
+                for batch_index, batch_start in enumerate( range( 0, combined_dataset.shape[0], umap_batchsize ) ):
+                    print( f"[Embedding] Transforming batch {batch_index + 1} / {batch_count}: " )
+                    batch_end = min( batch_start + umap_batchsize, combined_dataset.shape[0] )
+                    embedding[batch_start:batch_end, :] = model.transform( combined_dataset[batch_start:batch_end, :] ).astype( np.float32 )
 
     elif algorithm == "t-SNE":
         from sklearn.manifold import TSNE

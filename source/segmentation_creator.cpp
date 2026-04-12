@@ -176,7 +176,7 @@ SegmentationCreator::SegmentationCreator( const Database& database ) : QDialog {
         }
         else if( algorithm_combobox->currentText() == "Leiden" )
         {
-            QDesktopServices::openUrl( QUrl { "https://leidenalg.readthedocs.io/en/stable/api_reference.html#leidenalg.RBConfigurationVertexPartition" } );
+            QDesktopServices::openUrl( QUrl { "https://leidenalg.readthedocs.io" } );
         }
         else
         {

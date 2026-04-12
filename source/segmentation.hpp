@@ -2,7 +2,6 @@
 #include "json.hpp"
 #include "utility.hpp"
 
-#include <qcolor.h>
 #include <qobject.h>
 #include <qsharedpointer.h>
 
@@ -90,6 +89,9 @@ public:
 
     nlohmann::json serialize() const;
     bool deserialize( const nlohmann::json& json );
+
+    void serialize( MIAFileStream& stream ) const;
+    bool deserialize( MIAFileStream& stream );
 
     Editor editor();
 

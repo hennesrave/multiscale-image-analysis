@@ -28,7 +28,31 @@ namespace utility
     int stepsize_to_precision( double stepsize );
     int compute_precision( double value );
 
-    QString request_import_filepath( const QString& title, const QString& filter );
+    template<class T, class IndexType>
+    void apply_permutation( T* begin, T* end, const IndexType* permutation )
+    {
+        const auto size = static_cast<size_t>( end - begin );
+        std::vector<bool> visited( size, false );
+
+        for( std::size_t i = 0; i < size; ++i )
+        {
+            if( visited[i] || permutation[i] == i ) continue;
+
+            auto temp = std::move( begin[i] );
+            auto current_index = i;
+
+            while( permutation[current_index] != i )
+            {
+                const auto next_index = permutation[current_index];
+                begin[current_index] = std::move( begin[next_index] );
+                visited[current_index] = true;
+                current_index = next_index;
+            }
+
+            begin[current_index] = std::move( temp );
+            visited[current_index] = true;
+        }
+    }
 
     template<class IndexType> void iterate_parallel( IndexType start, IndexType end, auto&& callable )
     {
@@ -329,8 +353,7 @@ template<class T> struct vec4
 
     vec4() noexcept : x {}, y {}, z {}, w {} {}
     vec4( value_type x, value_type y, value_type z, value_type w ) noexcept : x { x }, y { y }, z { z }, w { w }
-    {
-    }
+    {}
 
     template<class U> vec4<U> cast() const
     {
@@ -465,8 +488,7 @@ public:
     using value_type = T;
 
     Override( value_type automatic_value, std::optional<value_type> override_value ) noexcept : _automatic_value { automatic_value }, _override_value { override_value }
-    {
-    }
+    {}
 
     const value_type& automatic_value() const noexcept
     {
@@ -541,8 +563,7 @@ public:
 
     Computed() noexcept = default;
     Computed( std::function<value_type()> compute_function ) noexcept : _compute_function { std::move( compute_function ) }
-    {
-    }
+    {}
 
     void initialize( std::function<value_type()> compute_function ) noexcept
     {
