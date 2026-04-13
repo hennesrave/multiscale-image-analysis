@@ -1,5 +1,6 @@
 #include "channel_glyphs_viewer.hpp"
 
+#include "number_input.hpp"
 #include "python.hpp"
 #include "segment_selector.hpp"
 
@@ -18,6 +19,7 @@
 #include <qpushbutton.h>
 #include <qspinbox.h>
 #include <qtoolbutton.h>
+#include <qwidgetaction.h>
 
 #include <iostream>
 
@@ -492,6 +494,9 @@ ChannelGlyphsViewer::ChannelGlyphsViewer( Database& database )
     QObject::connect( this, &ChannelGlyphsViewer::positioning_changed, this, &ChannelGlyphsViewer::update_glyph_layout );
     QObject::connect( this, &ChannelGlyphsViewer::abundances_changed, this, qOverload<>( &QWidget::update ) );
 
+    //QObject::connect( &_colormap_domain.x, &OverrideObject::value_changed, this, &ChannelGlyphsViewer::update_glyph_images );
+    //QObject::connect( &_colormap_domain.y, &OverrideObject::value_changed, this, &ChannelGlyphsViewer::update_glyph_images );
+
     const auto features = _database.features();
     QObject::connect( features.get(), &CollectionObject::object_appended, this, qOverload<>( &QWidget::update ) );
     QObject::connect( features.get(), &CollectionObject::object_removed, this, qOverload<>( &QWidget::update ) );
@@ -845,6 +850,58 @@ void ChannelGlyphsViewer::mousePressEvent( QMouseEvent* event )
 
         // Colormap
         auto colormap_menu = context_menu.addMenu( "Colormap" );
+
+        {
+            struct Axis
+            {
+                vec2<double> bounds;
+                vec2<double> domain;
+            } _xaxis;
+
+            _xaxis.bounds.x = _colormap_lower.automatic_value();
+            _xaxis.bounds.y = _colormap_upper.automatic_value();
+            _xaxis.domain.x = _colormap_lower.override_value().value_or( _xaxis.bounds.x );
+            _xaxis.domain.y = _colormap_upper.override_value().value_or( _xaxis.bounds.y );
+
+            auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _xaxis.domain.x == _xaxis.bounds.x ? std::nullopt : std::optional<double> { _xaxis.domain.x } };
+            auto xaxis_upper = new Override<double> { _xaxis.bounds.y, _xaxis.domain.y == _xaxis.bounds.y ? std::nullopt : std::optional<double> { _xaxis.domain.y } };
+
+            //auto xaxis_lower_input = new NumberInput { *xaxis_lower, [=] ( double value ) { return value >= _xaxis.bounds.x && value < xaxis_upper->value(); } };
+            //auto xaxis_upper_input = new NumberInput { *xaxis_upper, [=] ( double value ) { return value > xaxis_lower->value() && value <= _xaxis.bounds.y; } };
+
+            auto xaxis_lower_input = new NumberInput { *xaxis_lower, [=] ( double value ) { return value < xaxis_upper->value(); } };
+            auto xaxis_upper_input = new NumberInput { *xaxis_upper, [=] ( double value ) { return value > xaxis_lower->value(); } };
+
+            xaxis_lower->setParent( xaxis_lower_input );
+            xaxis_upper->setParent( xaxis_upper_input );
+
+            auto xaxis_container_widget = new QWidget { &context_menu };
+            auto xaxis_container_layout = new QHBoxLayout { xaxis_container_widget };
+            xaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
+            xaxis_container_layout->setSpacing( 3 );
+            xaxis_container_layout->addWidget( new QLabel { "Domain: " } );
+            xaxis_container_layout->addWidget( xaxis_lower_input );
+            xaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
+            xaxis_container_layout->addWidget( xaxis_upper_input );
+
+            auto xaxis_widget_action = new QWidgetAction { &context_menu };
+            xaxis_widget_action->setDefaultWidget( xaxis_container_widget );
+
+            QObject::connect( xaxis_lower, &Override<double>::value_changed, this, [=]
+            {
+                _colormap_lower.update_override_value( xaxis_lower->value() );
+                this->update_glyph_images();
+            } );
+            QObject::connect( xaxis_upper, &Override<double>::value_changed, this, [=]
+            {
+                _colormap_upper.update_override_value( xaxis_upper->value() );
+                this->update_glyph_images();
+            } );
+
+            colormap_menu->addAction( xaxis_widget_action );
+        }
+
+        colormap_menu->addSeparator();
 
         for( const auto& [identifier, colormap_template] : ColormapTemplate::registry )
         {
@@ -1409,6 +1466,11 @@ void ChannelGlyphsViewer::update_glyph_values()
         const auto glyph_x_maximum  = static_cast<size_t>( glyph_width - 1 );
         const auto glyph_y_maximum  = static_cast<size_t>( glyph_height - 1 );
 
+        auto accumulation_counts = Matrix<uint32_t> {
+            { static_cast<size_t>( glyph_width ), static_cast<size_t>( glyph_height ) },
+            0
+        };
+
         for( uint32_t x = _viewport.offset.x; x < _viewport.offset.x + _viewport.extent.x; ++x )
         {
             for( uint32_t y = _viewport.offset.y; y < _viewport.offset.y + _viewport.extent.y; ++y )
@@ -1429,6 +1491,23 @@ void ChannelGlyphsViewer::update_glyph_values()
                     const auto value = static_cast<double>( intensities.value( { element_index, channel_index } ) );
                     _glyphs[channel_index].values.value( { glyph_x, glyph_y } ) += value;
                 }
+
+                accumulation_counts.value( { glyph_x, glyph_y } ) += 1;
+            }
+        }
+
+        for( uint32_t channel_index = 0; channel_index < dataset.channel_count(); ++channel_index )
+        {
+            auto& glyph_values = _glyphs[channel_index].values;
+            for( size_t x = 0; x < glyph_width; ++x )
+            {
+                for( size_t y = 0; y < glyph_height; ++y )
+                {
+                    if( const auto count = accumulation_counts.value( { x, y } );  count > 0 )
+                    {
+                        glyph_values.value( { x, y } ) /= static_cast<double>( count );
+                    }
+                }
             }
         }
     } );
@@ -1448,6 +1527,9 @@ void ChannelGlyphsViewer::update_glyph_values()
             }
         }
         Console::info( std::format( "Global value range: [{}, {}]", value_minimum, value_maximum ) );
+
+        _colormap_lower.update_automatic_value( value_minimum );
+        _colormap_upper.update_automatic_value( value_maximum );
 
         const auto value_range = value_maximum - value_minimum;
         if( value_range == 0.0 )
@@ -1519,6 +1601,14 @@ void ChannelGlyphsViewer::update_glyph_images()
         return;
     }
 
+    const auto lower_automatic = _colormap_lower.automatic_value();
+    const auto upper_automatic = _colormap_upper.automatic_value();
+    const auto range_automatic = upper_automatic - lower_automatic;
+
+    const auto lower = ( _colormap_lower.value() - lower_automatic ) / range_automatic;
+    const auto upper = ( _colormap_upper.value() - lower_automatic ) / range_automatic;
+    const auto range = upper - lower;
+
     const auto glyph_width  = _glyphs.front().image.width();
     const auto glyph_height = _glyphs.front().image.height();
 
@@ -1528,7 +1618,13 @@ void ChannelGlyphsViewer::update_glyph_images()
         {
             for( int y = 0; y < glyph_height; ++y )
             {
-                const auto value = glyph.values.value( { static_cast<size_t>( x ), static_cast<size_t>( y ) } );
+                auto value = glyph.values.value( { static_cast<size_t>( x ), static_cast<size_t>( y ) } );
+
+                if( _normalization == Normalization::eGlobal )
+                {
+                    value = std::clamp( ( value - lower ) / range, 0.0, 1.0 );
+                }
+
                 const auto color = _colormap->color( value ).qcolor();
                 glyph.image.setPixelColor( x, y, color );
             }

@@ -121,10 +121,12 @@ private:
     ChannelSegmentAbundances _channel_segment_abundances;
 
     Viewport _viewport;
-    Normalization _normalization        = Normalization::eGlobal;
-    const ColormapTemplate* _colormap   = nullptr;
-    Positioning _positioning            = Positioning::eLinear;
-    Abundances _abundances              = Abundances::eDisabled;
+    Normalization _normalization            = Normalization::eGlobal;
+    const ColormapTemplate* _colormap       = nullptr;
+    Override<double> _colormap_lower        = { 0.0, std::nullopt };
+    Override<double> _colormap_upper        = { 1.0, std::nullopt };
+    Positioning _positioning                = Positioning::eLinear;
+    Abundances _abundances                  = Abundances::eDisabled;
 
     QImage _canvas;
     std::vector<Glyph> _glyphs;
