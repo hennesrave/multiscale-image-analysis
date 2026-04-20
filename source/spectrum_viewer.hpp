@@ -68,6 +68,7 @@ private:
 
     StatisticsMode _statistics_mode = StatisticsMode::eAverage;
     VisualizationMode _visualization_mode = VisualizationMode::eLine;
+    bool _render_global_spectrum = true;
 
     FeatureHandle _hovered_feature;
     FeatureHandle _selected_feature;

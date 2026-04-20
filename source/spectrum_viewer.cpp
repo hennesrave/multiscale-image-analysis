@@ -128,13 +128,17 @@ void SpectrumViewer::render( QPainter& painter )
         _statistics_mode == StatisticsMode::eAverage ? &Dataset::Statistics::channel_averages
         : _statistics_mode == StatisticsMode::eMinimum ? &Dataset::Statistics::channel_minimums
         : &Dataset::Statistics::channel_maximums;
-    const auto& statistics = dataset->statistics();
-    for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
+
+    if( _render_global_spectrum )
     {
-        const auto yscreen = this->world_to_screen_y( ( statistics.*statistics_accessor )[channel_index] );
-        polyline[channel_index].setY( yscreen );
+        const auto& statistics = dataset->statistics();
+        for( uint32_t channel_index = 0; channel_index < dataset->channel_count(); ++channel_index )
+        {
+            const auto yscreen = this->world_to_screen_y( ( statistics.*statistics_accessor )[channel_index] );
+            polyline[channel_index].setY( yscreen );
+        }
+        spectra.push_back( Spectrum { polyline, QColor { config::palette[900] } } );
     }
-    spectra.push_back( Spectrum { polyline, QColor { config::palette[900] } } );
 
     const auto& segmentation_statistics = dataset->segmentation_statistics( segmentation );
     for( uint32_t segment_number = 1; segment_number < segmentation->segment_count(); ++segment_number )
@@ -483,6 +487,12 @@ void SpectrumViewer::mousePressEvent( QMouseEvent* event )
             actions_visualization_mode->setExclusive( true );
             actions_visualization_mode->addAction( visualization_mode_spectrum );
             actions_visualization_mode->addAction( visualization_mode_lollipop );
+
+            visualization_menu->addSeparator();
+            auto render_global_spectrum_action = visualization_menu->addAction( "Global Spectrum" );
+            render_global_spectrum_action->setCheckable( true );
+            render_global_spectrum_action->setChecked( _render_global_spectrum );
+            QObject::connect( render_global_spectrum_action, &QAction::triggered, this, [this] { _render_global_spectrum = !_render_global_spectrum; } );
         }
 
         auto spectra_menu = menu.addMenu( "Spectra" );
