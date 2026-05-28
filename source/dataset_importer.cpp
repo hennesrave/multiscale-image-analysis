@@ -428,7 +428,13 @@ QSharedPointer<Dataset> DatasetImporter::from_la_icp_ms( const std::filesystem::
 
         // Read identifier
         std::getline( linestream, tokenstring, ';' );
-        const auto identifier = std::string { tokenstring.begin(), tokenstring.begin() + tokenstring.find( ' ' ) };
+
+        auto identifier = tokenstring;
+        if( const auto space_position = identifier.find( ' ' ); space_position != std::string::npos )
+        {
+            identifier = std::string { identifier.begin(), identifier.begin() + space_position };
+        }
+
         if( identifiers.empty() || identifiers.back() != identifier )
         {
             identifiers.push_back( identifier );
