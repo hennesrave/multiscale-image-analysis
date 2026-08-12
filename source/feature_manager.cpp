@@ -4,12 +4,8 @@
 #include "feature_selector.hpp"
 #include "string_input.hpp"
 
-#include <qapplication.h>
-#include <qcolordialog.h>
 #include <qcombobox.h>
 #include <qlayout.h>
-#include <qlineedit.h>
-#include <qmessagebox.h>
 #include <qpushbutton.h>
 #include <qtoolbutton.h>
 

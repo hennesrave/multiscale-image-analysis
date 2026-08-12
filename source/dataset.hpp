@@ -70,6 +70,32 @@ public:
 
     virtual Array<double> element_intensities( uint32_t element_index ) const = 0;
 
+    struct MissingValues
+    {
+        enum class Mode : uint32_t
+        {
+            eConstant,          // every missing value becomes `constant`
+            eChannelMean,       // mean of the measured values of the same channel
+            eChannelMedian,     // median of the measured values of the same channel
+            eLocalMedian        // median of the measured neighbours, requires spatial metadata
+        };
+        enum class Fallback : uint32_t
+        {
+            eNone,              // leave the cell missing
+            eConstant,
+            eChannelMedian
+        };
+
+        Mode mode = Mode::eChannelMedian;
+
+        double constant = 0.0;                          // eConstant, and eLocalMedian with Fallback::eConstant
+
+        uint32_t radius = 1;                            // eLocalMedian: neighbourhood extent in cells
+        uint32_t passes = 0;                            // eLocalMedian: 0 == until no further progress
+        Fallback fallback = Fallback::eChannelMedian;   // eLocalMedian: cells no neighbour ever reaches
+    };
+
+    virtual void replace_missing_values( const MissingValues& settings ) = 0;
     virtual void apply_baseline_correction_minimum() = 0;
     virtual void apply_baseline_correction_linear() = 0;
     virtual void apply_derivative( uint32_t degree ) = 0;
@@ -169,6 +195,104 @@ public:
         return _channel_positions[channel_index];
     }
 
+    void replace_missing_values( const MissingValues& settings ) override
+    {
+        if constexpr( !std::is_floating_point_v<value_type> )
+        {
+            Console::info( "No missing values to replace: the dataset does not hold floating point values" );
+        }
+        else
+        {
+            const auto element_count = this->element_count();
+            const auto channel_count = this->channel_count();
+            const auto* const spatial_metadata = this->spatial_metadata();
+
+            if( settings.mode == MissingValues::Mode::eLocalMedian )
+            {
+                if( !spatial_metadata )
+                {
+                    Console::error( "The local median requires a dataset with spatial metadata" );
+                    return;
+                }
+                if( static_cast<uint64_t>( spatial_metadata->width ) * spatial_metadata->height != element_count )
+                {
+                    Console::error( "The spatial metadata does not match the number of elements" );
+                    return;
+                }
+            }
+
+            // Channels are independent, so every mode is computed one channel at
+            // a time. Threads write to distinct addresses of the same column.
+            auto replaced_count = std::atomic<uint64_t> { 0 };
+            auto remaining_count = std::atomic<uint64_t> { 0 };
+
+            utility::iterate_parallel( channel_count, [&] ( uint32_t channel_index )
+            {
+                auto* const channel_begin = _intensities.data() + channel_index;
+                const auto stride = static_cast<size_t>( channel_count );
+
+                // Gather the channel into a contiguous buffer: the neighbourhood
+                // pass needs random access across elements of a single channel.
+                auto values = std::vector<double>( element_count );
+                auto missing = uint64_t { 0 };
+                for( uint32_t element_index = 0; element_index < element_count; ++element_index )
+                {
+                    values[element_index] = static_cast<double>( channel_begin[element_index * stride] );
+                    if( std::isnan( values[element_index] ) )
+                    {
+                        ++missing;
+                    }
+                }
+                if( missing == 0 )
+                {
+                    return;
+                }
+
+                // Computed before anything is filled, so that replacements can
+                // never be derived from other replacements.
+                const auto scalar = TensorDataset::scalar_replacement( values, settings );
+
+                if( settings.mode == MissingValues::Mode::eLocalMedian )
+                {
+                    TensorDataset::fill_local_median( values, *spatial_metadata, settings.radius, settings.passes );
+                }
+
+                auto replaced = uint64_t { 0 };
+                auto remaining = uint64_t { 0 };
+                for( uint32_t element_index = 0; element_index < element_count; ++element_index )
+                {
+                    if( !std::isnan( channel_begin[element_index * stride] ) )
+                    {
+                        continue;
+                    }
+
+                    auto value = values[element_index];
+                    if( std::isnan( value ) )
+                    {
+                        // Not reached by the neighbourhood pass, or the whole
+                        // channel is missing and no statistic exists.
+                        if( !scalar.has_value() )
+                        {
+                            ++remaining;
+                            continue;
+                        }
+                        value = *scalar;
+                    }
+
+                    channel_begin[element_index * stride] = static_cast<value_type>( value );
+                    ++replaced;
+                }
+
+                replaced_count += replaced;
+                remaining_count += remaining;
+            } );
+
+            Console::info( std::format( "Replaced {} missing value(s), {} left unchanged",
+                           replaced_count.load(), remaining_count.load() ) );
+
+            emit intensities_changed();
+        }
+    }
     void apply_baseline_correction_minimum() override
     {
         utility::iterate_parallel( this->element_count(), [this] ( uint32_t element_index )
@@ -329,6 +453,128 @@ private:
         }
 
         return segmentation_statistics;
+    }
+
+    // Reorders the values it is given.
+    static double median( std::vector<double>& values )
+    {
+        const auto middle = values.size() / 2;
+        std::nth_element( values.begin(), values.begin() + middle, values.end() );
+        const auto upper = values[middle];
+
+        if( values.size() % 2 == 1 )
+        {
+            return upper;
+        }
+        const auto lower = *std::max_element( values.begin(), values.begin() + middle );
+        return 0.5 * ( lower + upper );
+    }
+
+    // The value used for cells that the mode cannot resolve individually.
+    // std::nullopt means "leave the cell missing".
+    static std::optional<double> scalar_replacement( const std::vector<double>& values, const MissingValues& settings )
+    {
+        const auto mode = settings.mode;
+        if( mode == MissingValues::Mode::eConstant )
+        {
+            return settings.constant;
+        }
+        if( mode == MissingValues::Mode::eLocalMedian )
+        {
+            if( settings.fallback == MissingValues::Fallback::eNone ) return std::nullopt;
+            if( settings.fallback == MissingValues::Fallback::eConstant ) return settings.constant;
+        }
+
+        if( mode == MissingValues::Mode::eChannelMean )
+        {
+            auto sum = 0.0;
+            auto count = uint64_t { 0 };
+            for( const auto value : values ) if( !std::isnan( value ) )
+            {
+                sum += value;
+                ++count;
+            }
+            return ( count > 0 ) ? std::optional<double> { sum / static_cast<double>( count ) } : std::nullopt;
+        }
+
+        auto measured = std::vector<double> {};
+        measured.reserve( values.size() );
+        for( const auto value : values ) if( !std::isnan( value ) )
+        {
+            measured.push_back( value );
+        }
+        return measured.empty() ? std::nullopt : std::optional<double> { TensorDataset::median( measured ) };
+    }
+
+    // Replaces every missing cell by the median of the measured cells in its
+    // (2 * radius + 1) square neighbourhood, repeatedly, so that gaps wider
+    // than the neighbourhood are closed from their edges inwards. Cells filled
+    // during a pass only become available as neighbours in the next one, which
+    // keeps the result independent of the traversal order. passes == 0 runs
+    // until no further progress is made.
+    static void fill_local_median( std::vector<double>& values, const SpatialMetadata& spatial_metadata, uint32_t radius, uint32_t passes )
+    {
+        const auto width = spatial_metadata.width;
+        const auto height = spatial_metadata.height;
+        if( width == 0 || height == 0 || radius == 0 )
+        {
+            return;
+        }
+
+        const auto maximum_passes = ( passes > 0 ) ? passes : ( width + height );
+        const auto neighborhood_size = ( 2ull * radius + 1ull ) * ( 2ull * radius + 1ull );
+
+        auto source = values;
+        auto neighborhood = std::vector<double> {};
+        neighborhood.reserve( static_cast<size_t>( neighborhood_size ) );
+
+        auto previous_remaining = std::numeric_limits<uint64_t>::max();
+        for( uint32_t pass = 0; pass < maximum_passes; ++pass )
+        {
+            auto remaining = uint64_t { 0 };
+            for( uint32_t y = 0; y < height; ++y ) for( uint32_t x = 0; x < width; ++x )
+            {
+                const auto element_index = spatial_metadata.element_index( vec2<uint32_t> { x, y } );
+                if( !std::isnan( source[element_index] ) )
+                {
+                    continue;
+                }
+
+                const auto minimum_x = ( x > radius ) ? x - radius : 0;
+                const auto minimum_y = ( y > radius ) ? y - radius : 0;
+                const auto maximum_x = std::min( x + radius, width - 1 );
+                const auto maximum_y = std::min( y + radius, height - 1 );
+
+                neighborhood.clear();
+                for( auto neighbor_y = minimum_y; neighbor_y <= maximum_y; ++neighbor_y )
+                {
+                    for( auto neighbor_x = minimum_x; neighbor_x <= maximum_x; ++neighbor_x )
+                    {
+                        const auto neighbor_index = spatial_metadata.element_index( vec2<uint32_t> { neighbor_x, neighbor_y } );
+                        if( !std::isnan( source[neighbor_index] ) )
+                        {
+                            neighborhood.push_back( source[neighbor_index] );
+                        }
+                    }
+                }
+
+                if( neighborhood.empty() )
+                {
+                    ++remaining;
+                }
+                else
+                {
+                    values[element_index] = TensorDataset::median( neighborhood );
+                }
+            }
+
+            if( remaining == 0 || remaining == previous_remaining )
+            {
+                break;
+            }
+            previous_remaining = remaining;
+            source = values;
+        }
     }
 
     Matrix<value_type> _intensities;

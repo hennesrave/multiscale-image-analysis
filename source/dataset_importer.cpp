@@ -17,6 +17,147 @@
 #include <qmessagebox.h>
 #include <qpushbutton.h>
 
+namespace from_laser_lines_helper
+{
+    // Value written into grid cells that no laser shot ever covered, including
+      // whole rows belonging to missing laser line files. If the downstream
+      // pipeline cannot tolerate NaN, change this one constant -- but do not use
+      // 0.0 without thinking, it biases every statistic and colour scale
+      // computed over the map.
+    constexpr auto unsampled_value = std::numeric_limits<double>::quiet_NaN();
+
+    constexpr auto maximum_header_lines = uint32_t { 64 };
+
+    // How many consecutive missing files end the sequence rather than count as
+    // a gap within it.
+    constexpr auto maximum_line_gap = uint32_t { 8 };
+
+    // How many missing line numbers to spell out before abbreviating.
+    constexpr auto maximum_listed_gaps = std::size_t { 12 };
+
+    // Two consecutive x positions within a line may differ from the line's
+    // nominal pitch by this fraction before the line is rejected as irregular.
+    constexpr auto relative_pitch_tolerance = double { 0.02 };
+
+    // A line's y position must sit this close to the global row lattice,
+    // expressed as a fraction of the row pitch.
+    constexpr auto row_lattice_tolerance = double { 0.25 };
+
+    // Maximum permitted spread of y within a single line, in micrometres.
+    // Non-zero spread means the raster is rotated, which this importer does
+    // not support (rows would no longer be iso-y).
+    constexpr auto line_flatness_tolerance = double { 0.5 };
+
+    void report_error( const std::string& message )
+    {
+        Console::error( message );
+        QMessageBox::critical( nullptr, "", QString::fromStdString( message ), QMessageBox::Ok );
+    }
+
+    void report_warning( const std::string& message )
+    {
+        // Swap for Console::warning if the project has one.
+        Console::info( "Warning: " + message );
+    }
+
+    [[nodiscard]] std::string trimmed( std::string_view text )
+    {
+        constexpr auto whitespace = std::string_view { " \t\r\n" };
+        const auto begin = text.find_first_not_of( whitespace );
+        if( begin == std::string_view::npos )
+        {
+            return {};
+        }
+        const auto end = text.find_last_not_of( whitespace );
+        return std::string { text.substr( begin, end - begin + 1 ) };
+    }
+
+    [[nodiscard]] std::string lowercased( std::string_view text )
+    {
+        auto result = std::string { text };
+        std::transform( result.begin(), result.end(), result.begin(), [] ( unsigned char character )
+        {
+            return static_cast<char>( std::tolower( character ) );
+        } );
+        return result;
+    }
+
+    [[nodiscard]] std::vector<std::string> split_trimmed( std::string_view text, char delimiter )
+    {
+        auto tokens = std::vector<std::string> {};
+        auto begin = std::size_t { 0 };
+        while( true )
+        {
+            const auto end = text.find( delimiter, begin );
+            const auto count = ( end == std::string_view::npos ) ? std::string_view::npos : end - begin;
+            tokens.push_back( trimmed( text.substr( begin, count ) ) );
+            if( end == std::string_view::npos )
+            {
+                break;
+            }
+            begin = end + 1;
+        }
+        while( !tokens.empty() && tokens.back().empty() )
+        {
+            tokens.pop_back();
+        }
+        return tokens;
+    }
+
+    [[nodiscard]] std::optional<double> parse_number( const std::string& token )
+    {
+        if( token.empty() )
+        {
+            return std::nullopt;
+        }
+        auto value = double {};
+        const auto* const first = token.data();
+        const auto* const last = token.data() + token.size();
+        const auto result = std::from_chars( first, last, value );
+        if( result.ec != std::errc {} || result.ptr != last || !std::isfinite( value ) )
+        {
+            return std::nullopt;
+        }
+        return value;
+    }
+
+    // Intensities may legitimately be NaN; coordinates and metadata may not.
+    [[nodiscard]] std::optional<double> parse_intensity( const std::string& token )
+    {
+        if( token.empty() )
+        {
+            return unsampled_value;         // empty cell == not measured
+        }
+        auto value = double {};
+        const auto* const last = token.data() + token.size();
+        const auto result = std::from_chars( token.data(), last, value );
+        if( result.ec != std::errc {} || result.ptr != last )
+        {
+            return std::nullopt;            // genuinely unparseable
+        }
+        return std::isnan( value ) ? unsampled_value : value;
+    }
+
+    [[nodiscard]] std::string joined( const std::vector<uint32_t>& numbers, std::string_view format )
+    {
+        auto text = std::string {};
+        const auto listed = std::min( numbers.size(), maximum_listed_gaps );
+        for( std::size_t index = 0; index < listed; ++index )
+        {
+            if( index > 0 )
+            {
+                text += ", ";
+            }
+            text += std::vformat( format, std::make_format_args( numbers[index] ) );
+        }
+        if( listed < numbers.size() )
+        {
+            text += std::format( " and {} more", numbers.size() - listed );
+        }
+        return text;
+    }
+}
+
 QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& filepath )
 {
     const auto filename = filepath.filename();
@@ -882,146 +1023,631 @@ QSharedPointer<Dataset> DatasetImporter::from_laser_info( const std::filesystem:
 }
 QSharedPointer<Dataset> DatasetImporter::from_laser_lines( const std::filesystem::path& filepath )
 {
+    using namespace from_laser_lines_helper;
+
     const auto directory = filepath.parent_path();
 
-    struct Pixel
+    const auto line_filepath = [&directory] ( uint32_t file_number )
     {
-        vec2<uint32_t> coordinates { 0, 0 };
-        std::vector<std::string> intensities {};
+        return directory / std::format( "line_{}.csv", file_number );
     };
 
-    auto columns = std::vector<std::string> {};
-    auto pixels = std::vector<Pixel> {};
-    auto current_coordinates = vec2<uint32_t> { 0, 0 };
+    // A pixel keeps its absolute stage position. Grid indices are derived only
+    // once every line has been read, because the position of a line along x is
+    // not implied by its position in the file: the ablated region's edges need
+    // not be parallel to the stage axes, so successive lines can start at
+    // different x and can contain different numbers of pixels.
+    struct Pixel
+    {
+        vec2<double> position { 0.0, 0.0 };     // [um]
+        std::vector<double> intensities {};
+    };
+
+    struct LaserLine
+    {
+        uint32_t file_number { 0 };
+        double y { 0.0 };                       // [um]
+        double pitch { 0.0 };                    // unsigned along-line step [um]
+        uint32_t pixel_count { 0 };
+        bool left_to_right { true };
+    };
+
+    // --- discover the laser line files --------------------------------------
+    // Done up front so that a gap can be reported before the user waits for a
+    // full import. A run of more than maximum_line_gap missing numbers ends
+    // the sequence; anything shorter is a hole to be asked about.
+    auto present_numbers = std::vector<uint32_t> {};
+    auto missing_numbers = std::vector<uint32_t> {};
 
     for( uint32_t file_number = 1; true; ++file_number )
     {
-        const auto laser_line_filepath = directory / std::format( "line_{}.csv", file_number );
-        if( !std::filesystem::exists( laser_line_filepath ) )
+        if( std::filesystem::exists( line_filepath( file_number ) ) )
+        {
+            present_numbers.push_back( file_number );
+            continue;
+        }
+
+        auto continues = false;
+        for( uint32_t probe = 1; probe <= maximum_line_gap; ++probe )
+        {
+            if( std::filesystem::exists( line_filepath( file_number + probe ) ) )
+            {
+                continues = true;
+                break;
+            }
+        }
+        if( !continues )
         {
             break;
         }
+        missing_numbers.push_back( file_number );
+    }
+
+    if( present_numbers.empty() )
+    {
+        report_error( "No laser line files found next to " + filepath.string() );
+        return nullptr;
+    }
+
+    if( !missing_numbers.empty() )
+    {
+        const auto summary = std::format( "{} laser line file(s) missing: {}",
+            missing_numbers.size(), joined( missing_numbers, "line_{}.csv" ) );
+        report_warning( summary );
+
+        const auto question = QString::fromStdString( summary
+            + ".\n\nThe corresponding image row(s) will be left unsampled and filled "
+              "with the default fill value. The remaining lines are placed by their "
+              "recorded stage coordinates, so the geometry of the map is preserved."
+              "\n\nContinue with the import?" );
+
+        const auto answer = QMessageBox::question( nullptr, "", question,
+            QMessageBox::Yes | QMessageBox::No, QMessageBox::No );
+        if( answer != QMessageBox::Yes )
+        {
+            Console::info( "Laser line import cancelled because of missing files" );
+            return nullptr;
+        }
+        Console::info( "Continuing the import with missing laser lines left unsampled" );
+    }
+
+    auto columns = std::vector<std::string> {};
+    auto pixels = std::vector<Pixel> {};
+    auto lines = std::vector<LaserLine> {};
+
+    for( const auto file_number : present_numbers )
+    {
+        const auto laser_line_filepath = line_filepath( file_number );
 
         auto filestream = std::ifstream { laser_line_filepath };
         if( !filestream )
         {
-            Console::error( "Failed to open laser line file: " + laser_line_filepath.string() );
-            QMessageBox::critical( nullptr, "", "Failed to open laser line file", QMessageBox::Ok );
+            report_error( "Failed to open laser line file: " + laser_line_filepath.string() );
             return nullptr;
         }
 
         Console::info( std::format( "Importing {}...", laser_line_filepath.string() ) );
 
+        // --- metadata block -------------------------------------------------
+        // Read labelled rows until the column header appears, rather than
+        // assuming a fixed count, so an extra metadata row does not corrupt
+        // the import.
+        auto metadata = std::unordered_map<std::string, std::vector<std::string>> {};
+        auto header_tokens = std::vector<std::string> {};
         auto linestring = std::string {};
-        std::getline( filestream, linestring, '\n' );   // Timestamp
-        std::getline( filestream, linestring, '\n' );   // Laser line number
-        std::getline( filestream, linestring, '\n' );   // Laser line name
-        std::getline( filestream, linestring, '\n' );   // Laser image name
-        std::getline( filestream, linestring, '\n' );   // Starting X
-        std::getline( filestream, linestring, '\n' );   // Starting Y
-        std::getline( filestream, linestring, '\n' );   // Starting Z
-        std::getline( filestream, linestring, '\n' );   // Spot size
-        std::getline( filestream, linestring, '\n' );   // Spot spacing
-        std::getline( filestream, linestring, '\n' );   // Number of shots
-        std::getline( filestream, linestring, '\n' );   // Direction of ablation
-        const auto direction_of_ablation = linestring.substr( linestring.find_first_of( ',' ) + 1 );
 
-        if( direction_of_ablation.find( "Left to Right" ) == std::string::npos )
+        for( uint32_t header_line = 0; header_line < maximum_header_lines; ++header_line )
         {
-            Console::error( "Unsupported direction of ablation: " + direction_of_ablation );
-            QMessageBox::critical( nullptr, "", "Unsupported direction of ablation", QMessageBox::Ok );
+            if( !std::getline( filestream, linestring, '\n' ) )
+            {
+                break;
+            }
+
+            auto tokens = split_trimmed( linestring, ',' );
+            if( tokens.empty() )
+            {
+                continue;
+            }
+
+            if( lowercased( tokens.front() ).starts_with( "cycle time" ) )
+            {
+                header_tokens = std::move( tokens );
+                break;
+            }
+
+            auto key = tokens.front();
+            if( key.ends_with( ':' ) )
+            {
+                key.pop_back();
+            }
+            metadata.insert_or_assign(
+                lowercased( trimmed( key ) ),
+                std::vector<std::string> { tokens.begin() + 1, tokens.end() } );
+        }
+
+        if( header_tokens.size() < 4
+            || !lowercased( header_tokens[1] ).starts_with( "x" )
+            || !lowercased( header_tokens[2] ).starts_with( "y" ) )
+        {
+            report_error( "Invalid or missing column header in laser line file: "
+                + laser_line_filepath.string() );
             return nullptr;
         }
 
-        auto header = std::string {};
-        std::getline( filestream, header, '\n' );
-
-        if( file_number == 1 )
+        auto file_columns = std::vector<std::string> { header_tokens.begin() + 3, header_tokens.end() };
+        if( columns.empty() )
         {
-            auto linestream = std::stringstream { header };
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore cycle time
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore x
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore y
-
-            auto token = std::string {};
-            while( std::getline( linestream, token, ',' ) )
+            columns = std::move( file_columns );
+            if( columns.empty() )
             {
-                columns.push_back( token );
+                report_error( "No intensity columns in laser line file: "
+                    + laser_line_filepath.string() );
+                return nullptr;
+            }
+        }
+        else if( file_columns != columns )
+        {
+            report_error( "Column layout differs from the first laser line file: "
+                + laser_line_filepath.string() );
+            return nullptr;
+        }
+
+        const auto metadata_number = [&metadata] ( std::string_view key ) -> std::optional<double>
+        {
+            const auto iterator = metadata.find( std::string { key } );
+            if( iterator == metadata.end() || iterator->second.empty() )
+            {
+                return std::nullopt;
+            }
+            return parse_number( iterator->second.front() );
+        };
+
+        const auto spot_size = metadata_number( "spot size" );
+        const auto spot_spacing = metadata_number( "spot spacing" );
+        const auto number_of_shots = metadata_number( "number of shots" );
+
+        // The row lattice is reconstructed from line numbers, so a filename
+        // that disagrees with the recorded line number matters.
+        const auto recorded_number = metadata_number( "laser line number" );
+        if( recorded_number.has_value()
+            && static_cast<uint32_t>( *recorded_number ) != file_number )
+        {
+            report_warning( std::format( "{} records laser line number {}",
+                            laser_line_filepath.filename().string(),
+                            static_cast<int64_t>( *recorded_number ) ) );
+        }
+
+        // --- direction of ablation ------------------------------------------
+        // Both directions are accepted. Because pixels are placed by absolute
+        // x, a right-to-left line needs no reversal: its rows simply arrive in
+        // descending x. The declared direction is used only to validate that
+        // the coordinates actually run the way the file claims.
+        const auto direction_entry = metadata.find( "direction of ablation" );
+        if( direction_entry == metadata.end() || direction_entry->second.empty() )
+        {
+            report_error( "Missing direction of ablation in laser line file: "
+                + laser_line_filepath.string() );
+            return nullptr;
+        }
+
+        auto direction_text = std::string {};
+        for( const auto& token : direction_entry->second )
+        {
+            direction_text += lowercased( token ) + " ";
+        }
+
+        auto left_to_right = std::optional<bool> {};
+        if( direction_text.find( "left to right" ) != std::string::npos )
+        {
+            left_to_right = true;
+        }
+        else if( direction_text.find( "right to left" ) != std::string::npos )
+        {
+            left_to_right = false;
+        }
+        else if( const auto code = parse_number( direction_entry->second.front() ) )
+        {
+            if( *code == 0.0 )
+            {
+                left_to_right = true;
+            }
+            else if( *code == 1.0 )
+            {
+                left_to_right = false;
             }
         }
 
-        if( header.find_first_of( "Cycle time (ms),x[um],y [um]" ) == std::string::npos )
+        if( !left_to_right.has_value() )
         {
-            Console::error( "Invalid header in laser line file: " + laser_line_filepath.string() );
-            QMessageBox::critical( nullptr, "", "Invalid header in laser line file", QMessageBox::Ok );
+            report_error( "Unsupported direction of ablation: " + trimmed( direction_text ) );
             return nullptr;
         }
 
-        current_coordinates.x = 0;
-        while( std::getline( filestream, linestring, '\n' ) && !linestring.empty() )
+        // --- data rows ------------------------------------------------------
+        const auto first_pixel_index = pixels.size();
+        auto line_y = std::optional<double> {};
+        auto previous_x = double { 0.0 };
+        auto pitch = double { 0.0 };
+        auto row_number = uint32_t { 0 };
+
+        while( std::getline( filestream, linestring, '\n' ) )
         {
+            auto tokens = split_trimmed( linestring, ',' );
+            if( tokens.empty() )
+            {
+                continue;   // tolerate blank or trailing lines
+            }
+            ++row_number;
+
+            if( tokens.size() != columns.size() + 3 )
+            {
+                report_error( std::format(
+                    "Inconsistent number of columns in {} (row {}): expected {}, found {}",
+                    laser_line_filepath.filename().string(), row_number,
+                    columns.size() + 3, tokens.size() ) );
+                return nullptr;
+            }
+
+            const auto x = parse_number( tokens[1] );
+            const auto y = parse_number( tokens[2] );
+            if( !x.has_value() || !y.has_value() )
+            {
+                report_error( std::format( "Invalid coordinates in {} (row {})",
+                              laser_line_filepath.filename().string(), row_number ) );
+                return nullptr;
+            }
+
+            // Rows of one line must share a y, otherwise the raster is rotated
+            // and cannot be mapped onto an axis-aligned grid.
+            if( !line_y.has_value() )
+            {
+                line_y = *y;
+            }
+            else if( std::abs( *y - *line_y ) > line_flatness_tolerance )
+            {
+                report_error( std::format(
+                    "Laser line {} is not axis-aligned: y changes from {} to {} within the line",
+                    file_number, *line_y, *y ) );
+                return nullptr;
+            }
+
+            if( pixels.size() > first_pixel_index )
+            {
+                const auto step = *x - previous_x;
+                if( ( *left_to_right && step <= 0.0 ) || ( !*left_to_right && step >= 0.0 ) )
+                {
+                    report_error( std::format(
+                        "x coordinates in {} (row {}) contradict the declared direction of ablation",
+                        laser_line_filepath.filename().string(), row_number ) );
+                    return nullptr;
+                }
+                if( pitch == 0.0 )
+                {
+                    pitch = std::abs( step );
+                }
+                else if( std::abs( std::abs( step ) - pitch ) > relative_pitch_tolerance * pitch )
+                {
+                    report_error( std::format(
+                        "Irregular pixel pitch in {} (row {}): expected {}, found {}",
+                        laser_line_filepath.filename().string(), row_number, pitch, std::abs( step ) ) );
+                    return nullptr;
+                }
+            }
+            previous_x = *x;
+
             auto pixel = Pixel {
-                .coordinates = current_coordinates,
+                .position = vec2<double> { *x, *y },
                 .intensities = {}
             };
             pixel.intensities.reserve( columns.size() );
 
-            auto linestream = std::stringstream { linestring };
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore cycle time
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore x
-            linestream.ignore( std::numeric_limits<std::streamsize>::max(), ',' ); // Ignore y
-
-            auto token = std::string {};
-            while( std::getline( linestream, token, ',' ) )
+            for( std::size_t token_index = 3; token_index < tokens.size(); ++token_index )
             {
-                pixel.intensities.push_back( token );
-            }
-
-            if( pixel.intensities.size() != columns.size() )
-            {
-                Console::error( "Inconsistent number of columns in laser line file: " + laser_line_filepath.string() );
-                QMessageBox::critical( nullptr, "", "Inconsistent number of columns in laser line file", QMessageBox::Ok );
-                return nullptr;
+                const auto intensity = parse_intensity( tokens[token_index] );
+                if( !intensity.has_value() )
+                {
+                    report_error( std::format( "Invalid intensity '{}' in {} (row {}, column {})",
+                                  tokens[token_index], laser_line_filepath.filename().string(),
+                                  row_number, columns[token_index - 3] ) );
+                    return nullptr;
+                }
+                pixel.intensities.push_back( *intensity );
             }
 
             pixels.push_back( std::move( pixel ) );
-            ++current_coordinates.x;
         }
-        ++current_coordinates.y;
+
+        const auto pixel_count = static_cast<uint32_t>( pixels.size() - first_pixel_index );
+        if( pixel_count == 0 )
+        {
+            report_error( "No data rows in laser line file: " + laser_line_filepath.string() );
+            return nullptr;
+        }
+
+        // --- consistency of the export against the acquisition settings -----
+        // Spot spacing is the pulse-to-pulse increment, not the export pitch:
+        // several shots are aggregated into one exported row. Verify that the
+        // aggregation factor is integral and that the row count matches the
+        // declared shot count, so a changed export setting is noticed here
+        // instead of quietly distorting the map.
+        if( pixel_count > 1 && spot_spacing.has_value() && *spot_spacing > 0.0 )
+        {
+            const auto shots_per_pixel = pitch / *spot_spacing;
+            const auto rounded = std::round( shots_per_pixel );
+            if( rounded < 1.0 || std::abs( shots_per_pixel - rounded ) > 0.01 )
+            {
+                report_warning( std::format(
+                    "Laser line {}: pixel pitch {} um is not an integer multiple of the {} um spot spacing",
+                    file_number, pitch, *spot_spacing ) );
+            }
+            else if( number_of_shots.has_value() && *number_of_shots > 0.0 )
+            {
+                const auto expected = static_cast<uint32_t>( std::ceil( *number_of_shots / rounded ) );
+                if( expected != pixel_count )
+                {
+                    report_warning( std::format(
+                        "Laser line {}: {} rows exported but {} shots at {} shots/pixel imply {}",
+                        file_number, pixel_count, static_cast<uint64_t>( *number_of_shots ),
+                        static_cast<uint32_t>( rounded ), expected ) );
+                }
+            }
+        }
+
+        if( pixel_count > 1 && spot_size.has_value() && *spot_size > 0.0
+            && std::abs( pitch - *spot_size ) > relative_pitch_tolerance * *spot_size )
+        {
+            report_warning( std::format(
+                "Laser line {}: pixel pitch {} um differs from the {} um spot size",
+                file_number, pitch, *spot_size ) );
+        }
+
+        lines.push_back( LaserLine {
+            .file_number = file_number,
+            .y = *line_y,
+            .pitch = pitch,
+            .pixel_count = pixel_count,
+            .left_to_right = *left_to_right
+        } );
     }
 
-    if( pixels.empty() )
+    if( pixels.empty() || lines.empty() )
     {
-        QMessageBox::critical( nullptr, "", "Invalid laser line data", QMessageBox::Ok );
+        report_error( "Invalid laser line data: no pixels were read" );
         return nullptr;
     }
 
+    // --- derive the global lattice ------------------------------------------
+    auto column_pitch = double { 0.0 };
+    for( const auto& line : lines )
+    {
+        if( line.pitch <= 0.0 )
+        {
+            continue;
+        }
+        if( column_pitch == 0.0 )
+        {
+            column_pitch = line.pitch;
+        }
+        else if( std::abs( line.pitch - column_pitch ) > relative_pitch_tolerance * column_pitch )
+        {
+            report_error( std::format(
+                "Laser line {} uses a pixel pitch of {} um, incompatible with {} um used by earlier lines",
+                line.file_number, line.pitch, column_pitch ) );
+            return nullptr;
+        }
+    }
+    if( column_pitch == 0.0 )
+    {
+        report_error( "Unable to determine the pixel pitch: every laser line holds a single pixel" );
+        return nullptr;
+    }
+
+    // The line spacing is measured per unit of line number, not per present
+    // file, so a hole in the sequence cannot inflate it: with line_64 absent,
+    // lines 63 and 65 sit 320 um apart across two line numbers and still yield
+    // a 160 um spacing.
+    auto row_pitch = double { 0.0 };
+    auto descending = false;
+    for( std::size_t index = 1; index < lines.size(); ++index )
+    {
+        const auto& previous = lines[index - 1];
+        const auto& current = lines[index];
+
+        const auto position_gap = current.y - previous.y;
+        if( std::abs( position_gap ) <= line_flatness_tolerance )
+        {
+            report_error( std::format( "Laser lines {} and {} share the y position {} um",
+                          previous.file_number, current.file_number, current.y ) );
+            return nullptr;
+        }
+        if( index == 1 )
+        {
+            descending = position_gap < 0.0;
+        }
+        else if( ( position_gap < 0.0 ) != descending )
+        {
+            report_error( std::format(
+                "Laser line {} reverses the direction in which y advances", current.file_number ) );
+            return nullptr;
+        }
+
+        const auto number_gap = static_cast<double>( current.file_number - previous.file_number );
+        const auto candidate = std::abs( position_gap ) / number_gap;
+        if( row_pitch == 0.0 )
+        {
+            row_pitch = candidate;
+        }
+        else if( std::abs( candidate - row_pitch ) > relative_pitch_tolerance * row_pitch )
+        {
+            report_error( std::format(
+                "Laser lines {} and {} are {} um apart over {} line number(s), "
+                "incompatible with a line spacing of {} um",
+                previous.file_number, current.file_number, std::abs( position_gap ),
+                static_cast<uint32_t>( number_gap ), row_pitch ) );
+            return nullptr;
+        }
+    }
+    if( row_pitch == 0.0 )
+    {
+        row_pitch = column_pitch;   // single line: the row pitch is arbitrary
+    }
+    if( descending )
+    {
+        report_warning( "y decreases with the laser line number: grid row 0 is the last laser line" );
+    }
+
+    auto minimum = vec2<double> { pixels.front().position.x, pixels.front().position.y };
+    auto maximum = minimum;
+    for( const auto& pixel : pixels )
+    {
+        minimum.x = std::min( minimum.x, pixel.position.x );
+        minimum.y = std::min( minimum.y, pixel.position.y );
+        maximum.x = std::max( maximum.x, pixel.position.x );
+        maximum.y = std::max( maximum.y, pixel.position.y );
+    }
+
+    // Rows must land on the lattice; an off-lattice line means the spacing is
+    // uneven and the map would be silently sheared vertically.
+    for( const auto& line : lines )
+    {
+        const auto position = ( line.y - minimum.y ) / row_pitch;
+        if( std::abs( position - std::round( position ) ) > row_lattice_tolerance )
+        {
+            report_error( std::format(
+                "Laser line {} at y = {} um does not fit the {} um line spacing",
+                line.file_number, line.y, row_pitch ) );
+            return nullptr;
+        }
+    }
+
+    const auto width = static_cast<uint32_t>( std::llround( ( maximum.x - minimum.x ) / column_pitch ) + 1 );
+    const auto height = static_cast<uint32_t>( std::llround( ( maximum.y - minimum.y ) / row_pitch ) + 1 );
+    const auto element_count = static_cast<std::size_t>( width ) * static_cast<std::size_t>( height );
+
+    if( element_count < pixels.size() )
+    {
+        report_error( std::format( "Grid of {} x {} cells cannot hold {} pixels",
+                      width, height, pixels.size() ) );
+        return nullptr;
+    }
+
+    // The grid must span every line number, present or not.
+    const auto number_span = present_numbers.back() - present_numbers.front() + 1;
+    if( height != number_span )
+    {
+        report_warning( std::format(
+            "Laser line numbers {}..{} span {} lines but the coordinates imply {} grid rows",
+            present_numbers.front(), present_numbers.back(), number_span, height ) );
+    }
+
+    Console::info( std::format(
+        "{} laser lines ({} missing), {} pixels -> grid {} x {} at {} x {} um, origin ({}, {}) um",
+        lines.size(), missing_numbers.size(), pixels.size(), width, height,
+        column_pitch, row_pitch, minimum.x, minimum.y ) );
+
+    // --- channels -----------------------------------------------------------
     auto channel_identifiers = Array<QString> { columns.size(), QString {} };
     auto channel_positions = Array<double>::allocate( columns.size() );
     for( uint32_t channel_index = 0; channel_index < columns.size(); ++channel_index )
     {
-        channel_identifiers[channel_index] = QString::fromStdString( columns[channel_index] );
-        channel_identifiers[channel_index].chop( 4 );
+        auto identifier = QString::fromStdString( columns[channel_index] );
+        if( identifier.endsWith( " cps", Qt::CaseInsensitive ) )
+        {
+            identifier.chop( 4 );
+        }
+        channel_identifiers[channel_index] = identifier;
 
         const auto regex = QRegularExpression { R"(\d+)" };
-        const auto match = regex.match( channel_identifiers[channel_index] );
+        const auto match = regex.match( identifier );
+        if( !match.hasMatch() )
+        {
+            report_error( "Unable to determine the mass of channel: " + columns[channel_index] );
+            return nullptr;
+        }
         channel_positions[channel_index] = match.captured( 0 ).toDouble();
     }
 
-    auto intensities = Matrix<double>::allocate( { pixels.size(), channel_positions.size() } );
-    auto spatial_metadata = std::make_unique<Dataset::SpatialMetadata>(
-        pixels.back().coordinates.x + 1,
-        pixels.back().coordinates.y + 1
-    );
-    for( const auto& pixel : pixels )
+    // --- scatter the pixels onto the grid -----------------------------------
+    auto spatial_metadata = std::make_unique<Dataset::SpatialMetadata>( width, height );
+    auto intensities = Matrix<double>::allocate( { element_count, channel_positions.size() } );
+
+    for( std::size_t element_index = 0; element_index < element_count; ++element_index )
     {
-        const auto element_index = spatial_metadata->element_index( pixel.coordinates );
-        for( uint32_t channel_index = 0; channel_index < pixel.intensities.size(); ++channel_index )
+        for( uint32_t channel_index = 0; channel_index < columns.size(); ++channel_index )
         {
-            const auto intensity = std::stod( pixel.intensities[channel_index] );
-            intensities.update_value( { element_index, channel_index }, intensity );
+            intensities.update_value( { element_index, channel_index }, unsampled_value );
         }
     }
+
+    auto coverage = std::vector<uint32_t>( element_count, 0 );
+    auto maximum_snap_distance = double { 0.0 };
+
+    for( const auto& pixel : pixels )
+    {
+        const auto exact_column = ( pixel.position.x - minimum.x ) / column_pitch;
+        const auto exact_row = ( pixel.position.y - minimum.y ) / row_pitch;
+        const auto column = static_cast<uint32_t>( std::llround( exact_column ) );
+        const auto row = static_cast<uint32_t>( std::llround( exact_row ) );
+
+        if( column >= width || row >= height )
+        {
+            report_error( std::format( "Pixel at ({}, {}) um falls outside the {} x {} grid",
+                          pixel.position.x, pixel.position.y, width, height ) );
+            return nullptr;
+        }
+
+        // Lines are offset from one another by a fraction of a pixel, so each
+        // pixel is snapped to the nearest lattice cell. The displacement is
+        // bounded by half a pitch and is reported for inspection.
+        maximum_snap_distance = std::max( maximum_snap_distance,
+            std::abs( exact_column - std::round( exact_column ) ) * column_pitch );
+
+        const auto coordinates = vec2<uint32_t> { column, row };
+        const auto element_index = spatial_metadata->element_index( coordinates );
+
+        if( coverage[element_index] > 0 )
+        {
+            report_error( std::format(
+                "Two pixels map onto grid cell ({}, {}); the last one is at ({}, {}) um",
+                column, row, pixel.position.x, pixel.position.y ) );
+            return nullptr;
+        }
+        ++coverage[element_index];
+
+        for( uint32_t channel_index = 0; channel_index < pixel.intensities.size(); ++channel_index )
+        {
+            intensities.update_value( { element_index, channel_index }, pixel.intensities[channel_index] );
+        }
+    }
+
+    // Report the rows left entirely unsampled, so that the consequence of the
+    // missing files is visible in the log next to the grid geometry.
+    auto empty_rows = std::vector<uint32_t> {};
+    for( uint32_t row = 0; row < height; ++row )
+    {
+        auto sampled = false;
+        for( uint32_t column = 0; column < width && !sampled; ++column )
+        {
+            sampled = coverage[spatial_metadata->element_index( vec2<uint32_t> { column, row } )] > 0;
+        }
+        if( !sampled )
+        {
+            empty_rows.push_back( row );
+        }
+    }
+    if( !empty_rows.empty() )
+    {
+        report_warning( std::format( "{} grid row(s) are entirely unsampled: {}",
+                        empty_rows.size(), joined( empty_rows, "{}" ) ) );
+    }
+
+    const auto unsampled_count = element_count - pixels.size();
+    Console::info( std::format(
+        "Snapped pixels by at most {:.1f} um ({:.1f} % of the {} um pitch); "
+        "{} of {} cells unsampled ({:.2f} %)",
+        maximum_snap_distance, 100.0 * maximum_snap_distance / column_pitch, column_pitch,
+        unsampled_count, element_count, 100.0 * static_cast<double>( unsampled_count )
+        / static_cast<double>( element_count ) ) );
 
     auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
     dataset->update_channel_identifiers( std::move( channel_identifiers ) );

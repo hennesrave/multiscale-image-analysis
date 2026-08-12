@@ -2,6 +2,7 @@
 #include "dataset_alignment_dialog.hpp"
 #include "dataset_importer.hpp"
 #include "embedding_creator.hpp"
+#include "missing_values_dialog.hpp"
 #include "python.hpp"
 #include "workspace.hpp"
 #include "utility.hpp"
@@ -151,6 +152,8 @@ int main( int argc, char** argv )
                     }
                 }
             }
+
+            MissingValuesDialog::execute( dataset );
 
             const auto segmentation = _databases.size() ? _databases.front()->segmentation() : QSharedPointer<Segmentation> {};
             _databases.emplace_back( new Database { dataset, segmentation } );

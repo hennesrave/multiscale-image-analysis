@@ -4,7 +4,6 @@
 
 #include <ranges>
 #include <regex>
-#include <string_view>
 
 #include <qmessagebox.h>
 
