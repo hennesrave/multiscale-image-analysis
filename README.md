@@ -1,7 +1,7 @@
 # MIA: Multiscale Image Analysis
-MIA (Multiscale Image Analysis) is a visualization software for spectral imaging data. Please cite it like this:
+MIA (Multiscale Image Analysis) is a visualization software for spectral imaging data. Please cite the following paper if you used the software:
 
-> Hennes Rave, **MIA: Multiscale Image Analysis**, 2025. https://github.com/hennesrave/multiscale-image-analysis
+> H. Rave, K. Kronenberg, H. Gödde, L. Tobergte, M. Holtkamp, J. Werner, P. Bohrer, F. Lohöfer, R. Braren, D. Clases, U. Karst, and L. Linsen, "MIA: A Visual Analytics System for Multimodal Spectral Imaging Data," *Computers & Graphics*, vol. 139, pp. 104727, 2026. DOI: [10.1016/J.CAG.2026.104727](https://doi.org/10.1016/J.CAG.2026.104727)
 
 ![Application Teaser Image](resources/application-teaser.png)
 
