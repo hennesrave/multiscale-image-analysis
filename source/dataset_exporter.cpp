@@ -3,6 +3,7 @@
 #include "database.hpp"
 #include "dataset.hpp"
 #include "filestream.hpp"
+#include "python.hpp"
 
 #include "segment_selector.hpp"
 
@@ -16,7 +17,7 @@
 
 void DatasetExporter::execute_dialog( const Database& database, const QSharedPointer<Dataset>& dataset )
 {
-    const auto filepath = std::filesystem::path { QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia;;*.csv" ).toStdWString() };
+    const auto filepath = std::filesystem::path { QFileDialog::getSaveFileName( nullptr, "Export Dataset...", "", "*.mia;;*.csv;;*.npy" ).toStdWString() };
     if( !filepath.empty() )
     {
         const auto extension = filepath.extension();
@@ -37,6 +38,63 @@ void DatasetExporter::execute_dialog( const Database& database, const QSharedPoi
         {
             auto dialog = DatasetExporterCSV { database, dataset, filepath };
             dialog.exec();
+        }
+        else if( extension == ".npy" )
+        {
+            auto interpreter = py::interpreter {};
+
+            auto dataset_memoryview = std::optional<py::memoryview> {};
+            dataset->visit( [&dataset_memoryview] ( const auto& dataset )
+            {
+                using value_type = std::remove_cvref_t<decltype( dataset )>::value_type;
+                dataset_memoryview = py::memoryview::from_buffer(
+                    dataset.intensities().data(),
+                    { dataset.element_count(), dataset.channel_count() },
+                    { dataset.channel_count() * sizeof( value_type ), sizeof( value_type ) }
+                );
+            } );
+
+            if( !dataset_memoryview.has_value() )
+            {
+                QMessageBox::critical( nullptr, "", "Failed to create memoryview" );
+                return;
+            }
+
+            const auto dimensions = dataset->spatial_metadata()? dataset->spatial_metadata()->dimensions : vec2<uint32_t> { 0, 0 };
+
+            using namespace py::literals;
+            auto locals = py::dict {
+                "filepath"_a = filepath.string(),
+                "dataset"_a = dataset_memoryview,
+                "dimensions_x"_a = dimensions.x,
+                "dimensions_y"_a = dimensions.y,
+                "error"_a = std::string {}
+            };
+
+            try
+            {
+                py::exec( R"(
+try:
+    import numpy as np
+
+    dataset = np.asarray( dataset, copy=False )
+    if dimensions_x > 0 and dimensions_y > 0:
+        dataset = dataset.reshape( ( dimensions_y, dimensions_x, dataset.shape[1] ) )
+    np.save( filepath, dataset )
+
+except Exception as exception:
+    error = str( exception ))", py::globals(), locals );
+            }
+            catch( const py::error_already_set& error )
+            {
+                locals["error"] = error.what();
+            }
+
+            if( const auto error = locals["error"].cast<std::string>(); !error.empty() )
+            {
+                Console::error( std::format( "Python error during dataset export: {}", error ) );
+                QMessageBox::critical( nullptr, "", "Failed to export dataset", QMessageBox::Ok );
+            }
         }
     }
 }
