@@ -10,5 +10,6 @@
         <file>settings.svg</file>
         <file>question.svg</file>
         <file>merge.svg</file>
+        <file>fileopen.svg</file>
     </qresource>
 </RCC>

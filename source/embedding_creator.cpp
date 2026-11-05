@@ -40,10 +40,23 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
     // Initialize general properties
     auto segment_selector = new SegmentSelector { segmentation };
 
+    auto logtransform = new QComboBox {};
+    logtransform->setToolTip( "Apply log(1 + x) transform before normalization" );
+    logtransform->addItem( "Disabled", false );
+    logtransform->addItem( "Enabled", true );
+
+    auto logtransform_negative_values = new QComboBox {};
+    logtransform_negative_values->setToolTip( "How to handle negative values when applying log-transform" );
+    logtransform_negative_values->addItem( "Clamp to Zero" );
+
     auto normalization = new QComboBox {};
     normalization->addItem( "Z-score" );
     normalization->addItem( "Min-Max" );
     normalization->addItem( "None" );
+
+    auto normalization_per_channel = new QComboBox {};
+    normalization_per_channel->addItem( "Disabled", false );
+    normalization_per_channel->addItem( "Enabled", true );
 
     auto filepath_label = new QLabel {};
     filepath_label->setSizePolicy( QSizePolicy::Expanding, QSizePolicy::Fixed );
@@ -201,12 +214,20 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
         auto channels_deselect_all = new QPushButton { "Deselect All" };
         auto channels_select_from_features = new QPushButton { "Select from Features" };
 
+        auto channels_save = new QToolButton {};
+        channels_save->setIcon( QIcon { ":/save.svg" } );
+
+        auto channels_open = new QToolButton {};
+        channels_open->setIcon( QIcon { ":/fileopen.svg" } );
+
         auto channels_select_layout = new QHBoxLayout {};
         channels_select_layout->setContentsMargins( 0, 0, 0, 0 );
         channels_select_layout->setSpacing( 5 );
         channels_select_layout->addWidget( channels_select_all );
         channels_select_layout->addWidget( channels_deselect_all );
         channels_select_layout->addWidget( channels_select_from_features );
+        channels_select_layout->addWidget( channels_save );
+        channels_select_layout->addWidget( channels_open );
 
         auto features_list = new QListWidget {};
         features_list->setSelectionMode( QAbstractItemView::MultiSelection );
@@ -256,6 +277,67 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
                 }
             }
         } );
+        QObject::connect( channels_save, &QToolButton::clicked, [channels_list]
+        {
+            const auto filters = QStringList { "*.txt" };
+            const auto filters_string = filters.join( ";;" );
+            auto selected_filter = QString { "*.txt" };
+            auto filepath = QFileDialog::getSaveFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter );
+            if( !filepath.isEmpty() )
+            {
+                auto file = QFile { filepath };
+                if( file.open( QIODevice::WriteOnly | QIODevice::Text ) )
+                {
+                    auto stream = QTextStream { &file };
+                    stream << "channel_count: " << channels_list->count() << "\n";
+                    for( uint32_t i = 0; i < static_cast<uint32_t>( channels_list->count() ); ++i )
+                    {
+                        const auto item = channels_list->item( static_cast<int>( i ) );
+                        stream << i << "\t" << item->text() << "\t" << item->isSelected() << "\n";
+                    }
+                }
+            }
+        } );
+        QObject::connect( channels_open, &QToolButton::clicked, [channels_list]
+        {
+            const auto filters = QStringList { "*.txt" };
+            const auto filters_string = filters.join( ";;" );
+            auto selected_filter = QString { "*.txt" };
+            auto filepath = QFileDialog::getOpenFileName( nullptr, "Choose Filepath...", "", filters_string, &selected_filter );
+            if( !filepath.isEmpty() )
+            {
+                auto file = QFile { filepath };
+                if( file.open( QIODevice::ReadOnly | QIODevice::Text ) )
+                {
+                    auto stream = QTextStream { &file };
+                    auto line = QString {};
+                    line = stream.readLine();
+
+                    const auto channel_count = line.split( " " ).back().toUInt();
+                    if( channel_count != static_cast<uint32_t>( channels_list->count() ) )
+                    {
+                        QMessageBox::warning( nullptr, "Open Channels...", "The channel count in the file does not match the current dataset" );
+                        return;
+                    }
+
+                    for( uint32_t i = 0; i < static_cast<uint32_t>( channels_list->count() ); ++i )
+                    {
+                        line = stream.readLine();
+                        const auto parts = line.split( "\t" );
+                        if( parts.size() == 3 )
+                        {
+                            const auto index = parts[0].toUInt();
+                            const auto selected = parts[2].toUInt();
+                            if( index < static_cast<uint32_t>( channels_list->count() ) )
+                            {
+                                const auto item = channels_list->item( static_cast<int>( index ) );
+                                item->setSelected( selected != 0 );
+                            }
+                        }
+                    }
+                }
+            }
+        } );
     }
 
     if( EmbeddingCreator::database_registry->size() > 1 )
@@ -266,7 +348,10 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
         QObject::connect( dataset_selector, &QComboBox::currentIndexChanged, dataset_properties, &QStackedWidget::setCurrentIndex );
     }
 
+    layout->addRow( "Log-Transform", logtransform );
+    layout->addRow( "    Negative Values", logtransform_negative_values );
     layout->addRow( "Normalization", normalization );
+    layout->addRow( "    per Channel", normalization_per_channel );
     layout->addRow( "Filepath", filepath_layout );
     layout->addRow( "Export Model", export_model );
     layout->addRow( "Algorithm", algorithm );
@@ -528,7 +613,10 @@ EmbeddingCreator::EmbeddingCreator() : QDialog {}
             "datasets_channels_weights"_a = datasets_channels_weights,
             "datasets_features_weights"_a = datasets_features_weights,
 
+            "logtransform"_a = logtransform->currentData().toBool(),
+            "logtransform_negative_values"_a = logtransform_negative_values->currentText().toStdString(),
             "normalization"_a = normalization->currentText().toStdString(),
+            "normalization_per_channel"_a = normalization_per_channel->currentData().toBool(),
             "filepath"_a = filepath_label->text().toStdString(),
             "algorithm"_a = algorithm->currentText().toStdString(),
 
@@ -634,6 +722,16 @@ try:
     
     print( f"[Embedding] Combined dataset: ({combined_dataset.shape}, {combined_dataset.dtype}) " )
 
+    # === Apply log-transform ==== #
+    if logtransform:
+        print( f"[Embedding] Applying log-transform to dataset" )
+        if np.any( combined_dataset < 0 ):
+            if logtransform_negative_values == "Clamp to Zero":
+                combined_dataset[combined_dataset < 0] = 0.0
+            else:
+                raise ValueError( "Unknown option for handling negative values in log-transform" )
+        np.log1p( combined_dataset, out=combined_dataset )
+
     # === Normalize dataset ==== #
     if normalization != "None":
         print( f"[Embedding] Normalizing dataset with method: {normalization} " )
@@ -652,12 +750,22 @@ try:
 
             if len( channels ) > 0:
                 channels_weight = channels_weight / np.sqrt( len( channels ) )
-                normalization_groups.append( (
-                    slice( current_channel_index, current_channel_index + channels.size ),
-                    channels_weight,
-                    dataset_index,
-                    "channels"
-                ) )
+
+                if normalization_per_channel:
+                    for i in range( len( channels ) ):
+                        normalization_groups.append( (
+                            slice( current_channel_index + i, current_channel_index + i + 1 ),
+                            channels_weight,
+                            dataset_index,
+                            f"channel {i}"
+                        ) )
+                else:
+                    normalization_groups.append( (
+                        slice( current_channel_index, current_channel_index + channels.size ),
+                        channels_weight,
+                        dataset_index,
+                        "channels"
+                    ) )
                 current_channel_index += len( channels )
             
             if len( features ) > 0:
@@ -679,7 +787,10 @@ try:
                 group_mean        = np.mean( group_dataview )
                 group_std         = np.std( group_dataview )
                 np.subtract( group_dataview, group_mean, out=group_dataview )
-                np.divide( group_dataview, group_std, out=group_dataview )
+                if group_std == 0.0:
+                    print( f"[Embedding] Warning: Standard deviation is zero for dataset {dataset_index} ({label}) in {group_slice}" )
+                else:
+                    np.divide( group_dataview, group_std, out=group_dataview )
 
             elif normalization == "Min-Max":
                 group_minimum     = np.min( group_dataview )

@@ -27,6 +27,14 @@ PlottingWidget::PlottingWidget()
     QObject::connect( this, &PlottingWidget::labelspacing_minor_changed, this, &PlottingWidget::compute_content_rectangle );
     QObject::connect( this, &PlottingWidget::xaxis_domain_changed, this, &PlottingWidget::compute_content_rectangle );
     QObject::connect( this, &PlottingWidget::yaxis_domain_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::xaxis_type_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::yaxis_type_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::xaxis_symlog_threshold_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::yaxis_symlog_threshold_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::xaxis_symlog_scale_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::yaxis_symlog_scale_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::xaxis_visible_changed, this, &PlottingWidget::compute_content_rectangle );
+    QObject::connect( this, &PlottingWidget::yaxis_visible_changed, this, &PlottingWidget::compute_content_rectangle );
 }
 
 QSize PlottingWidget::sizeHint() const
@@ -47,11 +55,22 @@ void PlottingWidget::wheelEvent( QWheelEvent* event )
 
     const auto cursor = event->position();
 
-    auto xdomain = _xaxis.domain;
-    auto ydomain = _yaxis.domain;
+    const auto to_axis = [] ( const Axis& axis, const vec2<double>& range )
+    {
+        return vec2<double> { to_axis_space( axis, range.x ), to_axis_space( axis, range.y ) };
+    };
+    const auto from_axis = [] ( const Axis& axis, const vec2<double>& range )
+    {
+        return vec2<double> { from_axis_space( axis, range.x ), from_axis_space( axis, range.y ) };
+    };
 
-    const auto x = std::clamp( this->screen_to_world_x( cursor.x() ), xdomain.x, xdomain.y );
-    const auto y = std::clamp( this->screen_to_world_y( cursor.y() ), ydomain.x, ydomain.y );
+    auto xdomain = to_axis( _xaxis, _xaxis.domain );
+    auto ydomain = to_axis( _yaxis, _yaxis.domain );
+    const auto xbounds = to_axis( _xaxis, _xaxis.bounds );
+    const auto ybounds = to_axis( _yaxis, _yaxis.bounds );
+
+    const auto x = std::clamp( to_axis_space( _xaxis, this->screen_to_world_x( cursor.x() ) ), xdomain.x, xdomain.y );
+    const auto y = std::clamp( to_axis_space( _yaxis, this->screen_to_world_y( cursor.y() ) ), ydomain.x, ydomain.y );
 
     const auto scaling = ( event->angleDelta().y() > 0 ) ? 1.1 : ( 1.0 / 1.1 );
 
@@ -70,17 +89,17 @@ void PlottingWidget::wheelEvent( QWheelEvent* event )
     xdomain = vec2<double> { xdomain.x - xscaling * xchange / 2.0, xdomain.y + ( 1.0 - xscaling ) * xchange / 2.0 };
     ydomain = vec2<double> { ydomain.x - yscaling * ychange / 2.0, ydomain.y + ( 1.0 - yscaling ) * ychange / 2.0 };
 
-    xdomain.x = std::clamp( xdomain.x, _xaxis.bounds.x, _xaxis.bounds.y );
-    xdomain.y = std::clamp( xdomain.y, _xaxis.bounds.x, _xaxis.bounds.y );
+    xdomain.x = std::clamp( xdomain.x, xbounds.x, xbounds.y );
+    xdomain.y = std::clamp( xdomain.y, xbounds.x, xbounds.y );
 
-    ydomain.x = std::clamp( ydomain.x, _yaxis.bounds.x, _yaxis.bounds.y );
-    ydomain.y = std::clamp( ydomain.y, _yaxis.bounds.x, _yaxis.bounds.y );
+    ydomain.x = std::clamp( ydomain.x, ybounds.x, ybounds.y );
+    ydomain.y = std::clamp( ydomain.y, ybounds.x, ybounds.y );
 
-    if( _xaxis.zoomable && cursor.x() > _content_rectangle.left() && ( _xaxis.bounds.y - _xaxis.bounds.x ) / ( xdomain.y - xdomain.x ) <= 10000.0 )
-        _xaxis.domain = xdomain;
+    if( _xaxis.zoomable && cursor.x() > _content_rectangle.left() && ( xbounds.y - xbounds.x ) / ( xdomain.y - xdomain.x ) <= 10000.0 )
+        _xaxis.domain = from_axis( _xaxis, xdomain );
 
-    if( _yaxis.zoomable && cursor.y() < _content_rectangle.bottom() && ( _yaxis.bounds.y - _yaxis.bounds.x ) / ( ydomain.y - ydomain.x ) <= 10000.0 )
-        _yaxis.domain = ydomain;
+    if( _yaxis.zoomable && cursor.y() < _content_rectangle.bottom() && ( ybounds.y - ybounds.x ) / ( ydomain.y - ydomain.x ) <= 10000.0 )
+        _yaxis.domain = from_axis( _yaxis, ydomain );
 
     this->compute_content_rectangle();
 }
@@ -285,6 +304,53 @@ void PlottingWidget::update_yaxis_domain( vec2<double> domain ) noexcept
     }
 }
 
+void PlottingWidget::update_xaxis_type( Axis::Type type ) noexcept
+{
+    if( _xaxis.type != type )
+    {
+        emit xaxis_type_changed( _xaxis.type = type );
+    }
+}
+void PlottingWidget::update_yaxis_type( Axis::Type type ) noexcept
+{
+    if( _yaxis.type != type )
+    {
+        emit yaxis_type_changed( _yaxis.type = type );
+    }
+}
+
+void PlottingWidget::update_xaxis_symlog_threshold( double threshold ) noexcept
+{
+    if( _xaxis.symlog_threshold != threshold )
+    {
+        emit xaxis_symlog_threshold_changed( _xaxis.symlog_threshold = threshold );
+    }
+}
+void PlottingWidget::update_yaxis_symlog_threshold( double threshold ) noexcept
+{
+    if( _yaxis.symlog_threshold != threshold )
+    {
+        emit yaxis_symlog_threshold_changed( _yaxis.symlog_threshold = threshold );
+    }
+}
+
+void PlottingWidget::update_xaxis_symlog_scale( double scale ) noexcept
+{
+    scale = std::clamp( scale, 0.0, 1.0 );
+    if( _xaxis.symlog_scale != scale )
+    {
+        emit xaxis_symlog_scale_changed( _xaxis.symlog_scale = scale );
+    }
+}
+void PlottingWidget::update_yaxis_symlog_scale( double scale ) noexcept
+{
+    scale = std::clamp( scale, 0.0, 1.0 );
+    if( _yaxis.symlog_scale != scale )
+    {
+        emit yaxis_symlog_scale_changed( _yaxis.symlog_scale = scale );
+    }
+}
+
 void PlottingWidget::update_xaxis_visible( bool visible ) noexcept
 {
     if( _xaxis.visible != visible )
@@ -337,11 +403,15 @@ const QRect& PlottingWidget::content_rectangle() const noexcept
 
 double PlottingWidget::world_to_screen_x( double value ) const
 {
-    return _content_rectangle.left() + ( ( value - _xaxis.domain.x ) / ( _xaxis.domain.y - _xaxis.domain.x ) ) * ( _content_rectangle.width() - 1 );
+    const auto lower = to_axis_space( _xaxis, _xaxis.domain.x );
+    const auto upper = to_axis_space( _xaxis, _xaxis.domain.y );
+    return _content_rectangle.left() + ( ( to_axis_space( _xaxis, value ) - lower ) / ( upper - lower ) ) * ( _content_rectangle.width() - 1 );
 }
 double PlottingWidget::world_to_screen_y( double value ) const
 {
-    return _content_rectangle.bottom() - ( ( value - _yaxis.domain.x ) / ( _yaxis.domain.y - _yaxis.domain.x ) ) * ( _content_rectangle.height() - 1 );
+    const auto lower = to_axis_space( _yaxis, _yaxis.domain.x );
+    const auto upper = to_axis_space( _yaxis, _yaxis.domain.y );
+    return _content_rectangle.bottom() - ( ( to_axis_space( _yaxis, value ) - lower ) / ( upper - lower ) ) * ( _content_rectangle.height() - 1 );
 }
 QPointF PlottingWidget::world_to_screen( const QPointF& world ) const
 {
@@ -350,11 +420,15 @@ QPointF PlottingWidget::world_to_screen( const QPointF& world ) const
 
 double PlottingWidget::screen_to_world_x( double value ) const
 {
-    return _xaxis.domain.x + ( ( value - _content_rectangle.left() ) / ( _content_rectangle.width() - 1 ) ) * ( _xaxis.domain.y - _xaxis.domain.x );
+    const auto lower = to_axis_space( _xaxis, _xaxis.domain.x );
+    const auto upper = to_axis_space( _xaxis, _xaxis.domain.y );
+    return from_axis_space( _xaxis, lower + ( ( value - _content_rectangle.left() ) / ( _content_rectangle.width() - 1 ) ) * ( upper - lower ) );
 }
 double PlottingWidget::screen_to_world_y( double value ) const
 {
-    return _yaxis.domain.x - ( ( value - _content_rectangle.bottom() ) / ( _content_rectangle.height() - 1 ) ) * ( _yaxis.domain.y - _yaxis.domain.x );
+    const auto lower = to_axis_space( _yaxis, _yaxis.domain.x );
+    const auto upper = to_axis_space( _yaxis, _yaxis.domain.y );
+    return from_axis_space( _yaxis, lower - ( ( value - _content_rectangle.bottom() ) / ( _content_rectangle.height() - 1 ) ) * ( upper - lower ) );
 }
 QPointF PlottingWidget::screen_to_world( const QPointF& screen ) const
 {
@@ -371,70 +445,172 @@ void PlottingWidget::reset_view()
 }
 void PlottingWidget::populate_context_menu( QMenu& context_menu )
 {
-    auto xaxis_label = new QLabel { "X-Axis: " };
-    auto yaxis_label = new QLabel { "Y-Axis: " };
+    auto axes_menu = context_menu.addMenu( "Axis Settings" );
 
-    auto xaxis_lower = new Override<double> { _xaxis.bounds.x, _xaxis.domain.x == _xaxis.bounds.x ? std::nullopt : std::optional<double> { _xaxis.domain.x } };
-    auto xaxis_upper = new Override<double> { _xaxis.bounds.y, _xaxis.domain.y == _xaxis.bounds.y ? std::nullopt : std::optional<double> { _xaxis.domain.y } };
-
-    auto yaxis_lower = new Override<double> { _yaxis.bounds.x, _yaxis.domain.x == _yaxis.bounds.x ? std::nullopt : std::optional<double> { _yaxis.domain.x } };
-    auto yaxis_upper = new Override<double> { _yaxis.bounds.y, _yaxis.domain.y == _yaxis.bounds.y ? std::nullopt : std::optional<double> { _yaxis.domain.y } };
-
-    auto xaxis_lower_input = new NumberInput { *xaxis_lower, [=] ( double value ) { return value >= _xaxis.bounds.x && value < xaxis_upper->value(); } };
-    auto xaxis_upper_input = new NumberInput { *xaxis_upper, [=] ( double value ) { return value > xaxis_lower->value() && value <= _xaxis.bounds.y; } };
-
-    auto yaxis_lower_input = new NumberInput { *yaxis_lower, [=] ( double value ) { return value >= _yaxis.bounds.x && value < yaxis_upper->value(); } };
-    auto yaxis_upper_input = new NumberInput { *yaxis_upper, [=] ( double value ) { return value > yaxis_lower->value() && value <= _yaxis.bounds.y; } };
-
-    xaxis_lower->setParent( xaxis_lower_input );
-    xaxis_upper->setParent( xaxis_upper_input );
-    yaxis_lower->setParent( yaxis_lower_input );
-    yaxis_upper->setParent( yaxis_upper_input );
-
-    auto xaxis_container_widget = new QWidget { &context_menu };
-    auto xaxis_container_layout = new QHBoxLayout { xaxis_container_widget };
-    xaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
-    xaxis_container_layout->setSpacing( 3 );
-    xaxis_container_layout->addWidget( xaxis_label );
-    xaxis_container_layout->addWidget( xaxis_lower_input );
-    xaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
-    xaxis_container_layout->addWidget( xaxis_upper_input );
-
-    auto yaxis_container_widget = new QWidget { &context_menu };
-    auto yaxis_container_layout = new QHBoxLayout { yaxis_container_widget };
-    yaxis_container_layout->setContentsMargins( 20, 2, 20, 2 );
-    yaxis_container_layout->setSpacing( 3 );
-    yaxis_container_layout->addWidget( yaxis_label );
-    yaxis_container_layout->addWidget( yaxis_lower_input );
-    yaxis_container_layout->addWidget( new QLabel { " \u2014 " } );
-    yaxis_container_layout->addWidget( yaxis_upper_input );
-
-    auto xaxis_widget_action = new QWidgetAction { &context_menu };
-    xaxis_widget_action->setDefaultWidget( xaxis_container_widget );
-
-    auto yaxis_widget_action = new QWidgetAction { &context_menu };
-    yaxis_widget_action->setDefaultWidget( yaxis_container_widget );
-
-    QObject::connect( xaxis_lower, &Override<double>::value_changed, this, [=]
+    auto minimum_label_width = 0;
+    for( const auto string : { "Bounds: ", "Threshold: ", "Scale: " } )
     {
-        this->update_xaxis_domain( vec2<double> { xaxis_lower->value(), _xaxis.domain.y } );
-    } );
-    QObject::connect( xaxis_upper, &Override<double>::value_changed, this, [=]
-    {
-        this->update_xaxis_domain( vec2<double> { _xaxis.domain.x, xaxis_upper->value() } );
-    } );
-    QObject::connect( yaxis_lower, &Override<double>::value_changed, this, [=]
-    {
-        this->update_yaxis_domain( vec2<double> { yaxis_lower->value(), _yaxis.domain.y } );
-    } );
-    QObject::connect( yaxis_upper, &Override<double>::value_changed, this, [=]
-    {
-        this->update_yaxis_domain( vec2<double> { _yaxis.domain.x, yaxis_upper->value() } );
-    } );
+        const auto width = QFontMetrics { axes_menu->font() }.boundingRect( string ).width();
+        minimum_label_width = std::max( minimum_label_width, width );
+    }
 
-    auto menu_axes = context_menu.addMenu( "Axis Settings" );
-    menu_axes->addAction( xaxis_widget_action );
-    menu_axes->addAction( yaxis_widget_action );
+    for( auto& axis_reference : { std::ref( _xaxis ), std::ref( _yaxis ) } )
+    {
+        auto& axis = axis_reference.get();
+        const auto is_xaxis = ( &axis == &_xaxis );
+        const auto is_yaxis = ( &axis == &_yaxis );
+
+        // Add a label to the axes menu
+        auto label = new QLabel { is_xaxis? "<b>X-Axis</b>" : "<b>Y-Axis</b>" };
+        label->setAlignment( Qt::AlignCenter );
+
+        auto label_action = new QWidgetAction { axes_menu };
+        label_action->setDefaultWidget( label );
+        axes_menu->addAction( label_action );
+
+        // Add a bounds input to the axes menu
+        auto bounds_label = new QLabel { "Bounds: " };
+        bounds_label->setFixedWidth( minimum_label_width );
+
+        auto axis_lower = new Override<double> { axis.bounds.x, axis.domain.x == axis.bounds.x ? std::nullopt : std::optional<double> { axis.domain.x } };
+        auto axis_upper = new Override<double> { axis.bounds.y, axis.domain.y == axis.bounds.y ? std::nullopt : std::optional<double> { axis.domain.y } };
+
+        auto axis_lower_input = new NumberInput { *axis_lower, [=] ( double value ) { return value >= axis.bounds.x && value < axis_upper->value(); } };
+        auto axis_upper_input = new NumberInput { *axis_upper, [=] ( double value ) { return value > axis_lower->value() && value <= axis.bounds.y; } };
+
+        axis_lower->setParent( axis_lower_input );
+        axis_upper->setParent( axis_upper_input );
+
+        auto bounds_container_widget = new QWidget { axes_menu };
+        auto bounds_container_layout = new QHBoxLayout { bounds_container_widget };
+        bounds_container_layout->setContentsMargins( 20, 2, 20, 2 );
+        bounds_container_layout->setSpacing( 3 );
+        bounds_container_layout->addWidget( bounds_label );
+        bounds_container_layout->addWidget( axis_lower_input );
+        bounds_container_layout->addWidget( new QLabel { " \u2014 " } );
+        bounds_container_layout->addWidget( axis_upper_input );
+
+        auto bounds_widget_action = new QWidgetAction { axes_menu };
+        bounds_widget_action->setDefaultWidget( bounds_container_widget );
+        axes_menu->addAction( bounds_widget_action );
+
+        // Add type selection to the axes menu
+        auto type_linear_action = new QAction { "Linear", axes_menu };
+        auto type_symlog_action = new QAction { "Symlog", axes_menu };
+
+        type_linear_action->setCheckable( true );
+        type_symlog_action->setCheckable( true );
+
+        type_linear_action->setChecked( axis.type == Axis::Type::eLinear );
+        type_symlog_action->setChecked( axis.type == Axis::Type::eSymmetricLogarithmic );
+
+        axes_menu->addAction( type_linear_action );
+        axes_menu->addAction( type_symlog_action );
+
+        // Setup connections
+        if( is_xaxis )
+        {
+            QObject::connect( axis_lower, &Override<double>::value_changed, this, [=]
+            {
+                this->update_xaxis_domain( vec2<double> { axis_lower->value(), _xaxis.domain.y } );
+            } );
+            QObject::connect( axis_upper, &Override<double>::value_changed, this, [=]
+            {
+                this->update_xaxis_domain( vec2<double> { _xaxis.domain.x, axis_upper->value() } );
+            } );
+            QObject::connect( type_linear_action, &QAction::triggered, this, [=]
+            {
+                this->update_xaxis_type( Axis::Type::eLinear );
+            } );
+            QObject::connect( type_symlog_action, &QAction::triggered, this, [=]
+            {
+                this->update_xaxis_type( Axis::Type::eSymmetricLogarithmic );
+            } );
+        }
+        else if( is_yaxis )
+        {
+            QObject::connect( axis_lower, &Override<double>::value_changed, this, [=]
+            {
+                this->update_yaxis_domain( vec2<double> { axis_lower->value(), _yaxis.domain.y } );
+            } );
+            QObject::connect( axis_upper, &Override<double>::value_changed, this, [=]
+            {
+                this->update_yaxis_domain( vec2<double> { _yaxis.domain.x, axis_upper->value() } );
+            } );
+            QObject::connect( type_linear_action, &QAction::triggered, this, [=]
+            {
+                this->update_yaxis_type( Axis::Type::eLinear );
+            } );
+            QObject::connect( type_symlog_action, &QAction::triggered, this, [=]
+            {
+                this->update_yaxis_type( Axis::Type::eSymmetricLogarithmic );
+            } );
+        }
+
+        if( axis.type ==Axis::Type::eSymmetricLogarithmic )
+        {
+            // Add symlog threshold input to the axes menu
+            auto threshold_label = new QLabel { "Threshold: " };
+            threshold_label->setFixedWidth( minimum_label_width );
+
+            auto threshold_override = new Override<double> { 1.0, axis.symlog_threshold == 1.0? std::nullopt : std::optional<double> { axis.symlog_threshold } };
+            auto threshold_input = new NumberInput { *threshold_override, [=] ( double value ) { return value > 0.0; } };
+
+            auto threshold_container_widget = new QWidget { axes_menu };
+            auto threshold_container_layout = new QHBoxLayout { threshold_container_widget };
+            threshold_container_layout->setContentsMargins( 20, 2, 20, 2 );
+            threshold_container_layout->setSpacing( 3 );
+            threshold_container_layout->addWidget( threshold_label );
+            threshold_container_layout->addWidget( threshold_input );
+
+            auto threshold_widget_action = new QWidgetAction { axes_menu };
+            threshold_widget_action->setDefaultWidget( threshold_container_widget );
+            axes_menu->addAction( threshold_widget_action );
+
+            // Add symlog scale input to the axes menu
+            auto scale_label = new QLabel { "Scale: " };
+            scale_label->setFixedWidth( minimum_label_width );
+
+            auto scale_override = new Override<double> { 0.05, axis.symlog_scale == 0.05? std::nullopt : std::optional<double> { axis.symlog_scale } };
+            auto scale_input = new NumberInput { *scale_override, [=] ( double value ) { return value >= 0.0 && value < 1.0; } };
+
+            auto scale_container_widget = new QWidget { axes_menu };
+            auto scale_container_layout = new QHBoxLayout { scale_container_widget };
+            scale_container_layout->setContentsMargins( 20, 2, 20, 2 );
+            scale_container_layout->setSpacing( 3 );
+            scale_container_layout->addWidget( scale_label );
+            scale_container_layout->addWidget( scale_input );
+
+            auto scale_widget_action = new QWidgetAction { axes_menu };
+            scale_widget_action->setDefaultWidget( scale_container_widget );
+            axes_menu->addAction( scale_widget_action );
+
+            if( is_xaxis )
+            {
+                QObject::connect( threshold_override, &Override<double>::value_changed, this, [=]
+                {
+                    this->update_xaxis_symlog_threshold( threshold_override->value() );
+                } );
+                QObject::connect( scale_override, &Override<double>::value_changed, this, [=]
+                {
+                    this->update_xaxis_symlog_scale( scale_override->value() );
+                } );
+            }
+            else if( is_yaxis )
+            {
+                QObject::connect( threshold_override, &Override<double>::value_changed, this, [=]
+                {
+                    this->update_yaxis_symlog_threshold( threshold_override->value() );
+                } );
+                QObject::connect( scale_override, &Override<double>::value_changed, this, [=]
+                {
+                    this->update_yaxis_symlog_scale( scale_override->value() );
+                } );
+            }
+        }
+
+        axes_menu->addSeparator();
+    }
 
     //auto screenshot = context_menu.addAction( "Screenshot", [this]
     //{
@@ -499,44 +675,54 @@ void PlottingWidget::compute_xaxis_ticks( int xaxis_width )
 {
     _xaxis.ticks = std::vector<Tick> {};
 
-    for( auto exponent = static_cast<int>( std::floor( std::log10( _xaxis.domain.y - _xaxis.domain.x ) + 1.0 ) ); true; exponent-- )
+    if( _xaxis.type == Axis::Type::eLinear )
     {
-        for( const auto mantissa : { 1.0, 0.5, 0.2 } )
+        for( auto exponent = static_cast<int>( std::floor( std::log10( _xaxis.domain.y - _xaxis.domain.x ) + 1.0 ) ); true; exponent-- )
         {
-            const auto stepsize = mantissa * std::pow( 10.0, exponent );
-            const auto precision = this->stepsize_to_precision( stepsize );
-
-            auto previous_rectangle = QRect { -10000, 0, 0, 0 };
-            auto current_ticks = std::vector<Tick> {};
-
-            const auto start = std::min( std::ceil( _xaxis.domain.x / stepsize ) * stepsize, _xaxis.domain.y );
-            const auto tickcount = static_cast<uint64_t>( std::round( ( _xaxis.domain.y - start ) / stepsize ) );
-
-            for( uint64_t i = 0; i <= tickcount; ++i )
+            for( const auto mantissa : { 1.0, 0.5, 0.2 } )
             {
-                const auto position = std::clamp( start + i * stepsize, _xaxis.domain.x, _xaxis.domain.y );
+                const auto stepsize = mantissa * std::pow( 10.0, exponent );
+                const auto precision = this->stepsize_to_precision( stepsize );
 
-                auto rectangle = previous_rectangle;
-                const auto label = QString::number( position, 'f', precision );
-                const auto labelwidth = this->fontMetrics().boundingRect( label ).width() + 2; // TODO: why is +2 necessary?
+                auto previous_rectangle = QRect { -10000, 0, 0, 0 };
+                auto current_ticks = std::vector<Tick> {};
 
-                rectangle.setWidth( labelwidth );
-                rectangle.moveLeft( static_cast<int>( std::round( this->world_to_screen_x( position ) - ( labelwidth / 2.0 ) ) ) );
-                if( rectangle.left() < _content_rectangle.left() ) rectangle.moveLeft( _content_rectangle.left() );
-                if( rectangle.right() > _content_rectangle.right() - 1 ) rectangle.moveRight( _content_rectangle.right() - 1 );
+                const auto start = std::min( std::ceil( _xaxis.domain.x / stepsize ) * stepsize, _xaxis.domain.y );
+                const auto tickcount = static_cast<uint64_t>( std::round( ( _xaxis.domain.y - start ) / stepsize ) );
 
-                if( rectangle.left() - previous_rectangle.right() < _labelspacing_major )
+                for( uint64_t i = 0; i <= tickcount; ++i )
                 {
-                    return;
+                    const auto position = std::clamp( start + i * stepsize, _xaxis.domain.x, _xaxis.domain.y );
+
+                    auto rectangle = previous_rectangle;
+                    const auto label = QString::number( position, 'f', precision );
+                    const auto labelwidth = this->fontMetrics().boundingRect( label ).width() + 2; // TODO: why is +2 necessary?
+
+                    rectangle.setWidth( labelwidth );
+                    rectangle.moveLeft( static_cast<int>( std::round( this->world_to_screen_x( position ) - ( labelwidth / 2.0 ) ) ) );
+                    if( rectangle.left() < _content_rectangle.left() ) rectangle.moveLeft( _content_rectangle.left() );
+                    if( rectangle.right() > _content_rectangle.right() - 1 ) rectangle.moveRight( _content_rectangle.right() - 1 );
+
+                    if( rectangle.left() - previous_rectangle.right() < _labelspacing_major )
+                    {
+                        return;
+                    }
+
+                    current_ticks.push_back( Tick { .position = position, .label = label } );
+                    previous_rectangle = rectangle;
                 }
 
-                current_ticks.push_back( Tick { .position = position, .label = label } );
-                previous_rectangle = rectangle;
+                _xaxis.ticks = std::move( current_ticks );
+                _xaxis.precision = precision;
             }
-
-            _xaxis.ticks = std::move( current_ticks );
-            _xaxis.precision = precision;
         }
+    }
+    else if( _xaxis.type == Axis::Type::eSymmetricLogarithmic )
+    {
+        this->compute_symlog_ticks(
+            _xaxis, _content_rectangle.left(), _content_rectangle.right() - 1,
+            [this] ( double position ) { return this->world_to_screen_x( position ); },
+            [this] ( const QString& label ) { return this->fontMetrics().boundingRect( label ).width() + 2; } );
     }
 }
 void PlottingWidget::compute_yaxis_ticks( int yaxis_height )
@@ -544,40 +730,50 @@ void PlottingWidget::compute_yaxis_ticks( int yaxis_height )
     const auto labelheight = this->fontMetrics().height();
     _yaxis.ticks = std::vector<Tick> {};
 
-    for( auto exponent = static_cast<int>( std::floor( std::log10( _yaxis.domain.y - _yaxis.domain.x ) + 1.0 ) ); true; exponent-- )
+    if( _yaxis.type == Axis::Type::eLinear )
     {
-        for( const auto mantissa : { 1.0, 0.5, 0.2 } )
+        for( auto exponent = static_cast<int>( std::floor( std::log10( _yaxis.domain.y - _yaxis.domain.x ) + 1.0 ) ); true; exponent-- )
         {
-            const auto stepsize = mantissa * std::pow( 10.0, exponent );
-            const auto precision = this->stepsize_to_precision( stepsize );
-
-            auto previous_rectangle = QRect { 0, _content_rectangle.bottom() + 10000, 0, labelheight };
-            auto current_ticks = std::vector<Tick> {};
-
-            const auto start = std::min( std::ceil( _yaxis.domain.x / stepsize ) * stepsize, _yaxis.domain.y );
-            const auto tickcount = static_cast<uint64_t>( std::round( ( _yaxis.domain.y - start ) / stepsize ) );
-
-            for( uint64_t i = 0; i <= tickcount; ++i )
+            for( const auto mantissa : { 1.0, 0.5, 0.2 } )
             {
-                const auto position = std::clamp( start + i * stepsize, _yaxis.domain.x, _yaxis.domain.y );
+                const auto stepsize = mantissa * std::pow( 10.0, exponent );
+                const auto precision = this->stepsize_to_precision( stepsize );
 
-                auto rectangle = previous_rectangle;
-                rectangle.moveTop( static_cast<int>( std::round( this->world_to_screen_y( position ) - ( labelheight / 2.0 ) ) ) );
-                if( rectangle.bottom() > _content_rectangle.bottom() - 1 ) rectangle.moveBottom( _content_rectangle.bottom() - 1 );
-                if( rectangle.top() < _content_rectangle.top() ) rectangle.moveTop( _content_rectangle.top() );
+                auto previous_rectangle = QRect { 0, _content_rectangle.bottom() + 10000, 0, labelheight };
+                auto current_ticks = std::vector<Tick> {};
 
-                if( previous_rectangle.top() - rectangle.bottom() < _labelspacing_major )
+                const auto start = std::min( std::ceil( _yaxis.domain.x / stepsize ) * stepsize, _yaxis.domain.y );
+                const auto tickcount = static_cast<uint64_t>( std::round( ( _yaxis.domain.y - start ) / stepsize ) );
+
+                for( uint64_t i = 0; i <= tickcount; ++i )
                 {
-                    return;
+                    const auto position = std::clamp( start + i * stepsize, _yaxis.domain.x, _yaxis.domain.y );
+
+                    auto rectangle = previous_rectangle;
+                    rectangle.moveTop( static_cast<int>( std::round( this->world_to_screen_y( position ) - ( labelheight / 2.0 ) ) ) );
+                    if( rectangle.bottom() > _content_rectangle.bottom() - 1 ) rectangle.moveBottom( _content_rectangle.bottom() - 1 );
+                    if( rectangle.top() < _content_rectangle.top() ) rectangle.moveTop( _content_rectangle.top() );
+
+                    if( previous_rectangle.top() - rectangle.bottom() < _labelspacing_major )
+                    {
+                        return;
+                    }
+
+                    current_ticks.push_back( Tick { .position = position, .label = QString::number( position, 'f', precision ) } );
+                    previous_rectangle = rectangle;
                 }
 
-                current_ticks.push_back( Tick { .position = position, .label = QString::number( position, 'f', precision ) } );
-                previous_rectangle = rectangle;
+                _yaxis.ticks = std::move( current_ticks );
+                _yaxis.precision = precision;
             }
-
-            _yaxis.ticks = std::move( current_ticks );
-            _yaxis.precision = precision;
         }
+    }
+    else if( _yaxis.type == Axis::Type::eSymmetricLogarithmic )
+    {
+        this->compute_symlog_ticks(
+            _yaxis, _content_rectangle.top(), _content_rectangle.bottom() - 1,
+            [this] ( double position ) { return this->world_to_screen_y( position ); },
+            [labelheight] ( const QString& ) { return labelheight; } );
     }
 }
 int PlottingWidget::stepsize_to_precision( double stepsize ) const noexcept
@@ -616,4 +812,205 @@ void PlottingWidget::update_content_rectangle( const QRect& viewport ) noexcept
     }
 
     this->update();
+}
+
+double PlottingWidget::symlog_slope( const Axis& axis )
+{
+    const auto threshold = axis.symlog_threshold;
+    const auto scale = axis.symlog_scale;
+
+    const auto linear_width = std::min( axis.bounds.y, threshold ) - std::max( axis.bounds.x, -threshold );
+    const auto decades = std::log10( std::max( -axis.bounds.x, threshold ) / threshold )
+        + std::log10( std::max( axis.bounds.y, threshold ) / threshold );
+
+    if( linear_width <= 0.0 || decades <= 0.0 || scale <= 0.0 || scale >= 1.0 ) return 1.0;
+    return scale * decades * threshold / ( ( 1.0 - scale ) * linear_width );
+}
+double PlottingWidget::to_axis_space( const Axis& axis, double value )
+{
+    if( axis.type == Axis::Type::eLinear ) return value;
+
+    const auto threshold = axis.symlog_threshold;
+    const auto slope = symlog_slope( axis );
+    if( std::abs( value ) <= threshold ) return slope * value / threshold;
+    return std::copysign( slope + std::log10( std::abs( value ) / threshold ), value );
+}
+double PlottingWidget::from_axis_space( const Axis& axis, double value )
+{
+    if( axis.type == Axis::Type::eLinear ) return value;
+
+    const auto threshold = axis.symlog_threshold;
+    const auto slope = symlog_slope( axis );
+    if( std::abs( value ) <= slope ) return value * threshold / slope;
+    return std::copysign( threshold * std::pow( 10.0, std::abs( value ) - slope ), value );
+}
+void PlottingWidget::compute_symlog_ticks( Axis& axis, int screen_min, int screen_max, const std::function<double( double )>& world_to_screen, const std::function<int( const QString& )>& label_extent )
+{
+    struct Candidate
+    {
+        double position;
+        int precision;
+    };
+    enum Region { eNegative, eLinear, ePositive };
+
+    constexpr auto epsilon = 1e-9;
+    constexpr auto max_level = 100; // safety net for degenerate domains
+    constexpr auto nice_strides = std::array { 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000 };
+
+    const auto threshold = axis.symlog_threshold; // must be > 0
+    const auto lower = axis.domain.x;
+    const auto upper = axis.domain.y;
+
+    const auto linear_lower = std::max( lower, -threshold );
+    const auto linear_upper = std::min( upper, threshold );
+    const auto linear_exists = linear_lower < linear_upper;
+
+    // Linear part: same 1/0.5/0.2 * 10^n scheme as for linear axes
+    const auto generate_linear = [&] ( int level )
+    {
+        const auto exponent = static_cast<int>( std::floor( std::log10( linear_upper - linear_lower ) + 1.0 ) ) - level / 3;
+        const auto stepsize = std::array { 1.0, 0.5, 0.2 }[level % 3] * std::pow( 10.0, exponent );
+        const auto precision = this->stepsize_to_precision( stepsize );
+
+        auto candidates = std::vector<Candidate> {};
+        const auto first = static_cast<int64_t>( std::ceil( linear_lower / stepsize - epsilon ) );
+        const auto last = static_cast<int64_t>( std::floor( linear_upper / stepsize + epsilon ) );
+        for( auto i = first; i <= last; ++i )
+        {
+            candidates.push_back( Candidate { .position = std::clamp( i * stepsize, linear_lower, linear_upper ), .precision = precision } );
+        }
+        return candidates;
+    };
+
+    // One logarithmic part, as ascending magnitudes within [magnitude_lower, magnitude_upper]
+    const auto generate_logarithmic = [&] ( double magnitude_lower, double magnitude_upper, int level )
+    {
+        auto candidates = std::vector<Candidate> {};
+        const auto add = [&] ( double magnitude, int precision )
+        {
+            if( linear_exists && magnitude <= threshold * ( 1.0 + epsilon ) ) return; // belongs to the linear part
+            if( magnitude < magnitude_lower * ( 1.0 - epsilon ) || magnitude > magnitude_upper * ( 1.0 + epsilon ) ) return;
+            candidates.push_back( Candidate { .position = std::clamp( magnitude, magnitude_lower, magnitude_upper ), .precision = precision } );
+        };
+
+        const auto first_decade = static_cast<int>( std::floor( std::log10( magnitude_lower ) ) );
+        const auto last_decade = static_cast<int>( std::floor( std::log10( magnitude_upper ) ) );
+        const auto decadecount = last_decade - first_decade + 1;
+
+        auto coarsest = 0;
+        while( coarsest + 1 < static_cast<int>( nice_strides.size() ) && nice_strides[coarsest] < decadecount ) ++coarsest;
+
+        if( level <= coarsest )
+        {
+            // Stage 1: powers of ten, only every n-th decade
+            const auto stride = nice_strides[coarsest - level];
+            for( auto exponent = first_decade; exponent <= last_decade; ++exponent )
+            {
+                if( exponent % stride != 0 ) continue;
+                const auto decade = std::pow( 10.0, exponent );
+                add( decade, this->stepsize_to_precision( decade ) );
+            }
+        }
+        else if( level == coarsest + 1 )
+        {
+            // Stage 2: 1, 2 and 5 in every decade
+            for( auto exponent = first_decade; exponent <= last_decade; ++exponent )
+            {
+                const auto decade = std::pow( 10.0, exponent );
+                for( const auto mantissa : { 1.0, 2.0, 5.0 } ) add( mantissa * decade, this->stepsize_to_precision( decade ) );
+            }
+        }
+        else
+        {
+            // Stage 3: equidistant steps inside every decade (1, 0.5, 0.2, 0.1, ... times its power of ten)
+            const auto refinement = level - coarsest - 2;
+            const auto factor = std::array { 1.0, 0.5, 0.2 }[refinement % 3] * std::pow( 10.0, -( refinement / 3 ) );
+            for( auto exponent = first_decade; exponent <= last_decade; ++exponent )
+            {
+                const auto decade = std::pow( 10.0, exponent );
+                const auto stepsize = factor * decade;
+                const auto precision = this->stepsize_to_precision( stepsize );
+                const auto first = static_cast<int64_t>( std::ceil( std::max( decade, magnitude_lower ) / stepsize - epsilon ) );
+                const auto last = static_cast<int64_t>( std::floor( std::min( 10.0 * decade, magnitude_upper ) / stepsize + epsilon ) );
+                for( auto i = first; i <= last; ++i )
+                {
+                    const auto magnitude = i * stepsize;
+                    if( magnitude < 10.0 * decade * ( 1.0 - epsilon ) ) add( magnitude, precision ); // next power of ten belongs to the next decade
+                }
+            }
+        }
+        return candidates;
+    };
+
+    const auto generate = [&] ( int region, int level ) -> std::vector<Candidate>
+    {
+        if( region == eLinear ) return generate_linear( level );
+        if( region == ePositive ) return generate_logarithmic( std::max( lower, threshold ), upper, level );
+
+        auto candidates = generate_logarithmic( std::max( -upper, threshold ), -lower, level );
+        std::ranges::reverse( candidates );
+        for( auto& candidate : candidates ) candidate.position = -candidate.position;
+        return candidates;
+    };
+
+    // Same overlap rule as for linear axes, applied to all regions together
+    const auto fits = [&] ( const std::array<std::vector<Candidate>, 3>& regions )
+    {
+        auto previous = std::optional<std::pair<int, int>> {};
+        for( const auto& region : regions )
+        {
+            for( const auto& candidate : region )
+            {
+                const auto extent = label_extent( QString::number( candidate.position, 'f', candidate.precision ) );
+                auto first = static_cast<int>( std::round( world_to_screen( candidate.position ) - extent / 2.0 ) );
+                if( first < screen_min ) first = screen_min;
+                if( first + extent - 1 > screen_max ) first = screen_max - extent + 1;
+                const auto last = first + extent - 1;
+
+                if( previous && std::max( first - previous->second, previous->first - last ) < _labelspacing_major )
+                {
+                    return false;
+                }
+                previous = std::pair { first, last };
+            }
+        }
+        return true;
+    };
+
+    // Refine each region independently (round-robin) until its next level would overlap
+    auto accepted = std::array<std::vector<Candidate>, 3> {};
+    auto levels = std::array { 0, 0, 0 };
+    auto active = std::array { lower < -threshold, linear_exists, upper > threshold };
+
+    while( std::ranges::any_of( active, std::identity {} ) )
+    {
+        for( const auto region : { eNegative, eLinear, ePositive } )
+        {
+            if( !active[region] ) continue;
+
+            auto refined = accepted;
+            refined[region] = generate( region, levels[region] );
+            if( fits( refined ) )
+            {
+                accepted = std::move( refined );
+                ++levels[region];
+            }
+            else
+            {
+                active[region] = false;
+            }
+            if( levels[region] > max_level ) active[region] = false;
+        }
+    }
+
+    axis.ticks.clear();
+    axis.precision = 0;
+    for( const auto& region : accepted )
+    {
+        for( const auto& candidate : region )
+        {
+            axis.ticks.push_back( Tick { .position = candidate.position, .label = QString::number( candidate.position, 'f', candidate.precision ) } );
+            axis.precision = std::max( axis.precision, candidate.precision );
+        }
+    }
 }

@@ -16,8 +16,18 @@ public:
 
     struct Axis
     {
+        enum class Type
+        {
+            eLinear,
+            eSymmetricLogarithmic
+        };
+
         vec2<double> bounds { 0.0, 1.0 };
         vec2<double> domain { 0.0, 1.0 };
+
+        Type type = Type::eLinear;
+        double symlog_threshold = 1.0;
+        double symlog_scale = 0.05;
 
         std::vector<Tick> ticks;
         bool visible = true;
@@ -62,6 +72,15 @@ public:
     void update_xaxis_domain( vec2<double> domain ) noexcept;
     void update_yaxis_domain( vec2<double> domain ) noexcept;
 
+    void update_xaxis_type( Axis::Type type ) noexcept;
+    void update_yaxis_type( Axis::Type type ) noexcept;
+
+    void update_xaxis_symlog_threshold( double threshold ) noexcept;
+    void update_yaxis_symlog_threshold( double threshold ) noexcept;
+
+    void update_xaxis_symlog_scale( double scale ) noexcept;
+    void update_yaxis_symlog_scale( double scale ) noexcept;
+
     void update_xaxis_visible( bool visible ) noexcept;
     void update_yaxis_visible( bool visible ) noexcept;
 
@@ -94,6 +113,12 @@ signals:
     void yaxis_bounds_changed( vec2<double> bounds );
     void xaxis_domain_changed( vec2<double> domain );
     void yaxis_domain_changed( vec2<double> domain );
+    void xaxis_type_changed( Axis::Type type );
+    void yaxis_type_changed( Axis::Type type );
+    void xaxis_symlog_threshold_changed( double threshold );
+    void yaxis_symlog_threshold_changed( double threshold );
+    void xaxis_symlog_scale_changed( double scale );
+    void yaxis_symlog_scale_changed( double scale );
     void xaxis_visible_changed( bool visible );
     void yaxis_visible_changed( bool visible );
     void xaxis_zoomable_changed( bool zoomable );
@@ -110,6 +135,11 @@ protected:
 private:
     void compute_content_rectangle() noexcept;
     void update_content_rectangle( const QRect& viewport ) noexcept;
+
+    static double symlog_slope( const Axis& axis );
+    static double to_axis_space( const Axis& axis, double value );
+    static double from_axis_space( const Axis& axis, double value );
+    void compute_symlog_ticks( Axis& axis, int screen_min, int screen_max, const std::function<double( double )>& world_to_screen, const std::function<int( const QString& )>& label_extent );
 
     QMargins _margins { 5, 5, 5, 5 };
     int _linewidth = 1;
