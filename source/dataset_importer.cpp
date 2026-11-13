@@ -158,11 +158,177 @@ namespace from_laser_lines_helper
     }
 }
 
+namespace from_table_helper
+{
+    constexpr auto whitespace = std::string_view { " \t\r\n" };
+
+    std::string_view trim( std::string_view text )
+    {
+        const auto first = text.find_first_not_of( whitespace );
+        if( first == std::string_view::npos )
+        {
+            return {};
+        }
+        text = text.substr( first, text.find_last_not_of( whitespace ) - first + 1 );
+
+        // Strip one pair of surrounding quotes, as written by Excel and pandas
+        if( text.size() >= 2 && text.front() == '"' && text.back() == '"' )
+        {
+            return trim( text.substr( 1, text.size() - 2 ) );
+        }
+        return text;
+    }
+
+    std::vector<std::string_view> split( std::string_view line, char delimiter )
+    {
+        auto tokens = std::vector<std::string_view> {};
+        auto start  = size_t { 0 };
+        while( true )
+        {
+            const auto end = line.find( delimiter, start );
+            tokens.push_back( line.substr( start, end == std::string_view::npos ? std::string_view::npos : end - start ) );
+            if( end == std::string_view::npos )
+            {
+                return tokens;
+            }
+            start = end + 1;
+        }
+    }
+
+    std::optional<double> parse_number( std::string_view text, bool decimal_comma )
+    {
+        auto buffer = std::string { trim( text ) };
+        if( decimal_comma )
+        {
+            std::replace( buffer.begin(), buffer.end(), ',', '.' );
+        }
+        if( buffer.starts_with( '+' ) )
+        {
+            buffer.erase( 0, 1 );
+        }
+        if( buffer.empty() )
+        {
+            return std::nullopt;
+        }
+
+        auto value = 0.0;
+        const auto* end = buffer.data() + buffer.size();
+        const auto [ptr, error] = std::from_chars( buffer.data(), end, value );
+        if( error != std::errc {} || ptr != end )
+        {
+            return std::nullopt;
+        }
+        return value;
+    }
+
+    std::string to_lower( std::string_view text )
+    {
+        auto result = std::string { text };
+        std::transform( result.begin(), result.end(), result.begin(), [] ( unsigned char c ) { return static_cast<char>( std::tolower( c ) ); } );
+        return result;
+    }
+
+    // Matches "x", "X", "x [um]", "x (mm)", "x_um", ...
+    bool is_axis_column( std::string_view name, char axis )
+    {
+        const auto lower = to_lower( name );
+        if( lower.empty() || lower.front() != axis )
+        {
+            return false;
+        }
+        return lower.size() == 1 || lower[1] == ' ' || lower[1] == '_' || lower[1] == '[' || lower[1] == '(';
+    }
+
+    bool is_label_column( std::string_view name )
+    {
+        const auto lower = to_lower( name );
+        return lower == "id" || lower == "sample" || lower == "label";
+    }
+
+    struct GridAxis
+    {
+        double   origin = 0.0;
+        double   step   = 1.0;
+        uint32_t size   = 0; // 0 = coordinates do not form a usable grid
+
+        uint32_t index( double value ) const
+        {
+            return static_cast<uint32_t>( std::llround( ( value - origin ) / step ) );
+        }
+    };
+
+    // Infers a regular grid from coordinates: the step is the smallest gap between distinct values,
+    // so gaps (missing pixel columns) are preserved and physical units work as well as pixel indices
+    GridAxis infer_axis( std::vector<double> values )
+    {
+        std::sort( values.begin(), values.end() );
+        values.erase( std::unique( values.begin(), values.end() ), values.end() );
+
+        auto axis = GridAxis { values.front(), 1.0, 1 };
+        if( values.size() == 1 )
+        {
+            return axis;
+        }
+
+        const auto span = values.back() - values.front();
+        auto step = span;
+        for( size_t i = 1; i < values.size(); ++i )
+        {
+            const auto gap = values[i] - values[i - 1];
+            if( gap > span * 1e-9 )
+            {
+                step = std::min( step, gap );
+            }
+        }
+
+        const auto cells = std::round( span / step ) + 1.0;
+        axis.step = step;
+        axis.size = cells > 1e8 ? 0 : static_cast<uint32_t>( cells );
+        return axis;
+    }
+
+    QSharedPointer<Dataset> import_error( const std::string& message )
+    {
+        Console::error( message );
+        QMessageBox::critical( nullptr, "", QString::fromStdString( "Failed to import dataset: " + message ) );
+        return nullptr;
+    }
+}
+
+namespace utility
+{
+    using namespace from_table_helper;
+
+    // True if every non-empty cell of the line is a number, i.e. the file has no header row
+    bool is_headerless_matrix( std::string_view line )
+    {
+        auto has_value = false;
+        for( const auto token : split( line, ',' ) )
+        {
+            if( trim( token ).empty() )
+            {
+                continue; // from_matrix tolerates empty cells
+            }
+            if( !parse_number( token, false ) )
+            {
+                return false;
+            }
+            has_value = true;
+        }
+        return has_value;
+    }
+}
+
 QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& filepath )
 {
-    const auto filename = filepath.filename();
-
+    const auto filename = filepath.filename().string();
     auto filestream = std::ifstream { filepath };
+    if( !filestream )
+    {
+        QMessageBox::critical( nullptr, "", QString::fromStdString( "Failed to import dataset: could not open " + filename ) );
+        return nullptr;
+    }
+
     auto linestring = std::string {};
     std::getline( filestream, linestring, '\n' );
     filestream.close();
@@ -171,32 +337,31 @@ QSharedPointer<Dataset> DatasetImporter::from_csv( const std::filesystem::path& 
     {
         return DatasetImporter::from_single_particle_csv( filepath );
     }
-    else if( linestring.find( "SpTool version" ) == 0 )
+    if( linestring.find( "SpTool version" ) == 0 )
     {
         return DatasetImporter::from_single_particle_composition( filepath );
     }
-    else if( linestring.find( ";;;;Sample 1" ) != std::string::npos )
+    if( linestring.find( ";;;;Sample 1" ) != std::string::npos )
     {
         return DatasetImporter::from_la_icp_ms( filepath );
     }
-    else if( std::regex_search( filename.string(), std::regex { R"(line_\d+\.csv)" } ) && linestring.find( "Timestamp" ) == 0 )
+    if( linestring.starts_with( "Timestamp" ) && std::regex_search( filename, std::regex { R"(line_\d+\.csv$)" } ) )
     {
         return DatasetImporter::from_laser_lines( filepath );
     }
-    else if( std::regex_search( filename.string(), std::regex { R"([A-z]+?\d+?\.csv)" } ) )
+    if( linestring.starts_with( "X,Y,I" ) )
     {
-        if( linestring.find( "X,Y,I" ) != std::string::npos )
-        {
-            //return DatasetImporter::from_xyz( filepath );
-        }
-        else
-        {
-            return DatasetImporter::from_matrix( filepath );
-        }
+        //return DatasetImporter::from_xyz( filepath );
+        QMessageBox::critical( nullptr, "", "Failed to import dataset: X,Y,I files are not supported yet" );
+        return nullptr;
+    }
+    if( std::regex_search( filename, std::regex { R"([A-Za-z]\d+\.csv$)" } ) && utility::is_headerless_matrix( linestring ) )
+    {
+        return DatasetImporter::from_matrix( filepath );
     }
 
-    QMessageBox::critical( nullptr, "", "Unsupported file format" );
-    return nullptr;
+    // Everything else: generic long-format table (reports its own errors)
+    return DatasetImporter::from_table( filepath );
 }
 QSharedPointer<Dataset> DatasetImporter::from_data_dims_freq( const std::filesystem::path& input_filepath )
 {
@@ -1909,6 +2074,288 @@ QSharedPointer<Dataset> DatasetImporter::from_single_particle_csv( const std::fi
 
     auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
     dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    return QSharedPointer<Dataset> { dataset };
+}
+
+QSharedPointer<Dataset> DatasetImporter::from_table( const std::filesystem::path& filepath )
+{
+    using namespace from_table_helper;
+
+    auto filestream = std::ifstream { filepath, std::ios::in | std::ios::binary };
+    if( !filestream )
+    {
+        return import_error( std::format( "could not open {}", filepath.string() ) );
+    }
+
+    // Keep non-empty, non-comment lines along with their line numbers for error messages
+    struct Line
+    {
+        uint32_t    number;
+        std::string text;
+    };
+
+    auto lines      = std::vector<Line> {};
+    auto linestring = std::string {};
+    for( uint32_t number = 1; std::getline( filestream, linestring ); ++number )
+    {
+        if( number == 1 && linestring.starts_with( "\xEF\xBB\xBF" ) )
+        {
+            linestring.erase( 0, 3 ); // UTF-8 byte order mark written by Excel
+        }
+
+        const auto trimmed = trim( linestring );
+        if( trimmed.empty() || trimmed.front() == '#' )
+        {
+            continue;
+        }
+        lines.push_back( Line { number, std::move( linestring ) } );
+    }
+
+    if( lines.empty() )
+    {
+        return import_error( "file contains no header" );
+    }
+    if( lines.size() == 1 )
+    {
+        return import_error( "file contains a header but no data rows" );
+    }
+
+    // Detect delimiter from the header; ';' and tab exports usually use decimal commas
+    const auto& header_text = lines.front().text;
+    const auto occurrences  = [&] ( char c ) { return std::count( header_text.begin(), header_text.end(), c ); };
+
+    auto delimiter = ',';
+    if( occurrences( ';' ) > occurrences( delimiter ) )  delimiter = ';';
+    if( occurrences( '\t' ) > occurrences( delimiter ) ) delimiter = '\t';
+    const auto decimal_comma = delimiter != ',';
+
+    // Parse header into coordinate columns and channels
+    struct Channel
+    {
+        size_t                column;
+        std::string           identifier;
+        std::optional<double> position;
+    };
+
+    const auto header   = split( header_text, delimiter );
+    auto x_column       = std::optional<size_t> {};
+    auto y_column       = std::optional<size_t> {};
+    auto channels       = std::vector<Channel> {};
+
+    constexpr auto axis_hint = "a spatial dataset needs exactly one x and one y column "
+        "(a channel named 'Y' is read as the y coordinate unless it has a position, e.g. 'Y@14.96')";
+
+    for( size_t column = 0; column < header.size(); ++column )
+    {
+        const auto name = trim( header[column] );
+        if( name.empty() )
+        {
+            return import_error( std::format( "column {} has an empty header", column + 1 ) );
+        }
+
+        // name@position
+        if( const auto at = name.rfind( '@' ); at != std::string_view::npos )
+        {
+            const auto position_text = trim( name.substr( at + 1 ) );
+            const auto position      = parse_number( position_text, decimal_comma );
+            if( !position )
+            {
+                return import_error( std::format( "column '{}': '{}' is not a valid channel position", name, position_text ) );
+            }
+            channels.push_back( Channel { column, std::string { trim( name.substr( 0, at ) ) }, position } );
+            continue;
+        }
+
+        if( is_axis_column( name, 'x' ) || is_axis_column( name, 'y' ) )
+        {
+            auto& target = is_axis_column( name, 'x' ) ? x_column : y_column;
+            if( target )
+            {
+                return import_error( axis_hint );
+            }
+            target = column;
+            continue;
+        }
+
+        if( is_label_column( name ) )
+        {
+            continue;
+        }
+
+        // Purely numeric header (e.g. spectral bin energy) doubles as the position
+        channels.push_back( Channel { column, std::string { name }, parse_number( name, decimal_comma ) } );
+    }
+
+    if( x_column.has_value() != y_column.has_value() )
+    {
+        return import_error( axis_hint );
+    }
+    if( channels.empty() )
+    {
+        return import_error( "no channel columns found" );
+    }
+
+    // Channel positions: all given, or none (then column order is used)
+    const auto positioned = std::count_if( channels.begin(), channels.end(), [] ( const Channel& c ) { return c.position.has_value(); } );
+    if( positioned == 0 )
+    {
+        for( size_t i = 0; i < channels.size(); ++i )
+        {
+            channels[i].position = static_cast<double>( i );
+        }
+        Console::info( "No channel positions given; using column order" );
+    }
+    else if( static_cast<size_t>( positioned ) != channels.size() )
+    {
+        const auto missing = std::find_if( channels.begin(), channels.end(), [] ( const Channel& c ) { return !c.position.has_value(); } );
+        return import_error( std::format( "channel '{}' has no position; give every channel a position (e.g. 'Fe@6.40') or none", missing->identifier ) );
+    }
+
+    std::stable_sort( channels.begin(), channels.end(), [] ( const Channel& a, const Channel& b ) { return *a.position < *b.position; } );
+
+    // Parse data rows
+    const auto channel_count = static_cast<uint32_t>( channels.size() );
+    const auto row_count     = static_cast<uint32_t>( lines.size() - 1 );
+    const auto spatial       = x_column.has_value();
+
+    auto values = std::vector<double>( static_cast<size_t>( row_count ) * channel_count, 0.0 );
+    auto xs     = std::vector<double> {};
+    auto ys     = std::vector<double> {};
+    if( spatial )
+    {
+        xs.reserve( row_count );
+        ys.reserve( row_count );
+    }
+
+    for( uint32_t row = 0; row < row_count; ++row )
+    {
+        const auto& line  = lines[row + 1];
+        const auto tokens = split( line.text, delimiter );
+        if( tokens.size() != header.size() )
+        {
+            return import_error( std::format( "line {} has {} columns, expected {}", line.number, tokens.size(), header.size() ) );
+        }
+
+        if( spatial )
+        {
+            const auto x = parse_number( tokens[*x_column], decimal_comma );
+            const auto y = parse_number( tokens[*y_column], decimal_comma );
+            if( !x || !y )
+            {
+                return import_error( std::format( "line {}: missing or invalid x/y coordinates", line.number ) );
+            }
+            xs.push_back( *x );
+            ys.push_back( *y );
+        }
+
+        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+        {
+            const auto& channel = channels[channel_index];
+            const auto token    = trim( tokens[channel.column] );
+            if( token.empty() )
+            {
+                continue; // missing value -> 0, as in from_matrix
+            }
+
+            const auto value = parse_number( token, decimal_comma );
+            if( !value )
+            {
+                return import_error( std::format( "line {}, channel '{}': '{}' is not a number", line.number, channel.identifier, token ) );
+            }
+            values[static_cast<size_t>( row ) * channel_count + channel_index] = *value;
+        }
+    }
+
+    auto channel_positions   = Array<double>::allocate( channel_count );
+    auto channel_identifiers = Array<QString> { channel_count, QString {} };
+    for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+    {
+        channel_positions[channel_index]   = *channels[channel_index].position;
+        channel_identifiers[channel_index] = QString::fromStdString( channels[channel_index].identifier );
+    }
+
+    // Non-spatial: one element per row
+    if( !spatial )
+    {
+        auto intensities = Matrix<double>::allocate( { row_count, channel_count } );
+        for( uint32_t row = 0; row < row_count; ++row )
+        {
+            for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+            {
+                intensities.update_value( { row, channel_index }, values[static_cast<size_t>( row ) * channel_count + channel_index] );
+            }
+        }
+
+        Console::info( std::format( "Importing non-spatial dataset with {} elements and {} channels", row_count, channel_count ) );
+
+        auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+        dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+        return QSharedPointer<Dataset> { dataset };
+    }
+
+    // Spatial: place rows on the inferred grid
+    const auto x_axis      = infer_axis( xs );
+    const auto y_axis      = infer_axis( ys );
+    const auto pixel_count = static_cast<uint64_t>( x_axis.size ) * y_axis.size;
+
+    if( pixel_count == 0 || pixel_count > std::max<uint64_t>( uint64_t { 4 } * row_count, 4096 ) )
+    {
+        return import_error( std::format(
+            "x/y coordinates do not form a regular grid ({} rows would need a {} x {} image); use pixel indices or evenly spaced positions",
+            row_count, x_axis.size, y_axis.size ) );
+    }
+
+    const auto dimensions = vec2<uint32_t> { x_axis.size, y_axis.size };
+    auto spatial_metadata = std::unique_ptr<Dataset::SpatialMetadata> { new Dataset::SpatialMetadata { dimensions.x, dimensions.y } };
+    auto intensities      = Matrix<double>::allocate( { dimensions.x * dimensions.y, channel_count } );
+    auto occupied         = std::vector<bool>( pixel_count, false );
+
+    Console::info( std::format( "Importing dataset with dimensions {} x {} (step {} x {}) and {} channels",
+                   dimensions.x, dimensions.y, x_axis.step, y_axis.step, channel_count ) );
+
+    for( uint32_t row = 0; row < row_count; ++row )
+    {
+        const auto pixel         = vec2<uint32_t> { x_axis.index( xs[row] ), y_axis.index( ys[row] ) };
+        const auto element_index = spatial_metadata->element_index( pixel );
+        if( occupied[element_index] )
+        {
+            return import_error( std::format( "line {}: pixel ({}, {}) appears more than once", lines[row + 1].number, xs[row], ys[row] ) );
+        }
+        occupied[element_index] = true;
+
+        for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+        {
+            intensities.update_value( { element_index, channel_index }, values[static_cast<size_t>( row ) * channel_count + channel_index] );
+        }
+    }
+
+    // Pixels absent from the file are filled with zeros, matching from_matrix
+    auto missing = uint64_t { 0 };
+    for( uint32_t y = 0; y < dimensions.y; ++y )
+    {
+        for( uint32_t x = 0; x < dimensions.x; ++x )
+        {
+            const auto element_index = spatial_metadata->element_index( vec2<uint32_t> { x, y } );
+            if( occupied[element_index] )
+            {
+                continue;
+            }
+            ++missing;
+            for( uint32_t channel_index = 0; channel_index < channel_count; ++channel_index )
+            {
+                intensities.update_value( { element_index, channel_index }, 0.0 );
+            }
+        }
+    }
+    if( missing > 0 )
+    {
+        Console::info( std::format( "{} pixels missing from the file were set to 0", missing ) );
+    }
+
+    auto dataset = new TensorDataset<double> { std::move( intensities ), std::move( channel_positions ) };
+    dataset->update_channel_identifiers( std::move( channel_identifiers ) );
+    dataset->update_spatial_metadata( std::move( spatial_metadata ) );
+
     return QSharedPointer<Dataset> { dataset };
 }
 QSharedPointer<Dataset> DatasetImporter::from_xyz( const std::filesystem::path& base_filepath )

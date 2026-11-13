@@ -35,6 +35,20 @@ For full license details, please refer to the official repositories of these com
 ## Getting Started
 Upon starting the application, you will be prompted to import a dataset. Afterwards, the main application window will open. It consists of five views, which are described in more detail in the following sections. Most functionality is provided via context menus. If you are looking for a specific functionality, try right-clicking relevant UI components.
 
+### Importing CSV Data
+Besides several instrument-specific formats, which are detected automatically, MIA can import a generic `.csv` file with one row per pixel and one column per channel:
+
+```csv
+# Lines starting with # are comments
+x,y,Na@1.041,Si@1.740,Fe@6.404
+0,0,12,40,88
+1,0,9,38,91
+```
+
+- **Channels** are named `name@position`, where the position is used on the x-axis of the [spectrum viewer](#spectrum-viewer). Purely numeric headers (e.g. `6.40`) serve as both name and position. Without positions, the column order is used.
+- **Coordinates** go in `x` and `y` columns as pixel indices. Missing pixels are set to zero. A channel named `Y` (yttrium) needs a position, e.g. `Y@14.96`.
+- **Non-spatial data** simply omits `x` and `y`.
+- Comma, semicolon, and tab delimiters are detected automatically. Empty cells are read as zero.
 
 ### Terminology
 A dataset consists of `pixels` (i.e., datapoints, rows) and `channels` (i.e., dimensions, columns). Each pixel contains one `spectrum`, as well as x- and y-coordinates. The application and all of its views work on a single `segmentation` (i.e., clustering), which splits the set of pixels into `segments` (i.e., clusters). A `feature` maps each pixel to a single value, this could mean selecting single channel, or performing more complicated computations (e.g, integration, arithmetic operations). An `embedding` maps pixels (or channels) to 2D points, where similar pixels (or channels) are positioned close to each other, while dissimilar pixels (or channels) are spread apart.
